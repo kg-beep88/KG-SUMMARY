@@ -1,0 +1,28 @@
+MOVE YOUR CURRENT FIREBASE DATA TO SUPABASE
+===========================================
+
+This new app accepts the same KG JSON backup format as the Firebase version.
+You do not need to type your sites, items, prices, stock, DOs, manpower or jobs again.
+
+A. BEFORE REPLACING THE OLD WEBSITE
+-----------------------------------
+1. Open the current Firebase website.
+2. Sign in.
+3. Open Settings & Backup.
+4. Press Export backup.
+5. Keep the downloaded .json file safely.
+
+B. AFTER THE SUPABASE WEBSITE IS WORKING
+-----------------------------------------
+1. Sign in to the new Supabase website.
+2. Open Settings & Backup.
+3. Press Import backup.
+4. Select the JSON file exported from Firebase.
+5. Confirm the replacement.
+6. Open Dashboard and confirm the sites, stock, prices, DOs and manpower totals.
+7. Open Site Work and press Sync now.
+
+IMPORTANT
+---------
+Import backup replaces all current Supabase app data. Do it once at the start.
+The automatic Calendar sync will then keep Calendar-created work updated.

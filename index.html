@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#155eef" />
+  <meta name="description" content="Supabase-powered multi-site stock, Google Calendar site work, delivery orders, historical pricing, manpower and material costing." />
+  <title>KG Stock & Delivery Order — Supabase</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">KG</div>
+        <div>
+          <strong id="brandName">KG Stock & DO</strong>
+          <span>Sites · Stock · Cost</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-button active" data-view="dashboard"><span>▦</span> Dashboard</button>
+        <button class="nav-button" data-view="jobs"><span>▶</span> Site Work</button>
+        <button class="nav-button" data-view="deliveryOrders"><span>▤</span> Delivery Orders</button>
+        <button class="nav-button" data-view="stock"><span>▣</span> Stock</button>
+        <button class="nav-button" data-view="prices"><span>$</span> Price History</button>
+        <button class="nav-button" data-view="manpower"><span>👷</span> Manpower</button>
+        <button class="nav-button" data-view="master"><span>⚙</span> Sites & Items</button>
+        <button class="nav-button" data-view="settings"><span>↧</span> Settings & Backup</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="modeBadge" class="mode-badge">Checking storage…</div>
+        <button id="authButton" class="button secondary full">Sign in</button>
+        <small id="userLabel">Not signed in</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSubtitle">Live overview of stock, delivery orders and costs.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="button secondary" id="quickStockButton">+ Stock Entry</button>
+          <button class="button primary" id="quickDOButton">+ New DO</button>
+        </div>
+      </header>
+
+      <section id="dashboardView" class="view active"></section>
+      <section id="jobsView" class="view"></section>
+      <section id="deliveryOrdersView" class="view"></section>
+      <section id="stockView" class="view"></section>
+      <section id="pricesView" class="view"></section>
+      <section id="manpowerView" class="view"></section>
+      <section id="masterView" class="view"></section>
+      <section id="settingsView" class="view"></section>
+    </main>
+  </div>
+
+  <dialog id="doDialog" class="modal modal-wide">
+    <form id="doForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Create Delivery Order</h2>
+          <p>Prices are selected from the latest price effective on the DO date.</p>
+        </div>
+        <button type="button" class="icon-button" data-close="doDialog" aria-label="Close">×</button>
+      </div>
+
+      <div class="form-grid three">
+        <label class="span-2">Saved site work
+          <select id="doJob" name="jobId"><option value="">No saved work selected</option></select>
+        </label>
+        <div class="form-action-field"><span>Quick reuse</span><button id="useLastDOButton" class="button secondary" type="button">Use last DO items</button></div>
+        <label>DO date<input id="doDate" name="date" type="date" required /></label>
+        <label>From location<select id="doFromSite" name="fromSiteId" required></select></label>
+        <label>Deliver to site<select id="doToSite" name="toSiteId" required></select></label>
+        <label>Reference / Vehicle<input id="doReference" name="reference" placeholder="Optional" /></label>
+        <label class="span-2">Remarks<input id="doNotes" name="notes" placeholder="Optional delivery instructions" /></label>
+      </div>
+
+      <div class="section-heading compact">
+        <div><h3>Materials</h3><p>The saved price becomes a permanent snapshot for this DO.</p></div>
+        <button id="addDOLineButton" class="button secondary" type="button">+ Add item</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Price on DO date</th><th>Cost</th><th></th></tr></thead>
+          <tbody id="doLinesBody"></tbody>
+          <tfoot><tr><td colspan="4" class="align-right"><strong>Material total</strong></td><td><strong id="doMaterialTotal">$0.00</strong></td><td></td></tr></tfoot>
+        </table>
+      </div>
+      <div id="doPriceNotice" class="notice hidden"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="doDialog">Cancel</button>
+        <button type="submit" class="button primary">Save & issue DO</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="stockDialog" class="modal">
+    <form id="stockForm" method="dialog">
+      <div class="modal-header">
+        <div><h2>New Stock Entry</h2><p>Receive, issue, transfer or correct stock.</p></div>
+        <button type="button" class="icon-button" data-close="stockDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label>Date<input id="stockDate" name="date" type="date" required /></label>
+        <label>Entry type
+          <select id="stockType" name="type" required>
+            <option value="stock_in">Stock in</option>
+            <option value="stock_out">Stock out / consumed</option>
+            <option value="transfer">Transfer between sites</option>
+            <option value="adjustment">Adjustment (+ or −)</option>
+          </select>
+        </label>
+        <label>Item<select id="stockItem" name="itemId" required></select></label>
+        <label>Quantity<input id="stockQuantity" name="quantity" type="number" step="0.001" required /></label>
+        <label id="stockFromLabel">From location<select id="stockFromSite" name="fromSiteId"></select></label>
+        <label id="stockToLabel">To location<select id="stockToSite" name="toSiteId"></select></label>
+        <label class="span-2">Notes<input id="stockNotes" name="notes" placeholder="Supplier DO, reason, person, etc." /></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="stockDialog">Cancel</button>
+        <button type="submit" class="button primary">Save stock entry</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="priceDialog" class="modal">
+    <form id="priceForm" method="dialog">
+      <div class="modal-header">
+        <div><h2>Add Item Price</h2><p>Enter the first date this price should be used.</p></div>
+        <button type="button" class="icon-button" data-close="priceDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label>Item<select id="priceItem" name="itemId" required></select></label>
+        <label>Effective from<input id="priceDate" name="effectiveDate" type="date" required /></label>
+        <label>Unit price<input id="unitPrice" name="unitPrice" type="number" min="0" step="0.01" required /></label>
+        <label>Supplier<input id="priceSupplier" name="supplier" placeholder="Optional" /></label>
+        <label class="span-2">Notes<input id="priceNotes" name="notes" placeholder="Quotation number or reason for change" /></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="priceDialog">Cancel</button>
+        <button type="submit" class="button primary">Save price</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="manpowerDialog" class="modal">
+    <form id="manpowerForm" method="dialog">
+      <div class="modal-header">
+        <div><h2>Add Manpower Cost</h2><p>Cost = workers × hours per worker × hourly rate.</p></div>
+        <button type="button" class="icon-button" data-close="manpowerDialog">×</button>
+      </div>
+      <div class="form-grid two">
+        <label class="span-2">Saved site work<select id="manpowerJob" name="jobId"><option value="">No saved work selected</option></select></label>
+        <label>Date<input id="manpowerDate" name="date" type="date" required /></label>
+        <label>Work site<select id="manpowerSite" name="siteId" required></select></label>
+        <label>Trade / Description<input id="manpowerRole" name="role" placeholder="e.g. Installer" required /></label>
+        <label>No. of workers<input id="manpowerWorkers" name="workers" type="number" min="0" step="1" required /></label>
+        <label>Hours per worker<input id="manpowerHours" name="hoursPerWorker" type="number" min="0" step="0.25" required /></label>
+        <label>Rate per hour<input id="manpowerRate" name="ratePerHour" type="number" min="0" step="0.01" required /></label>
+        <label class="span-2">Notes<input id="manpowerNotes" name="notes" placeholder="Optional" /></label>
+      </div>
+      <div class="calculation-box">Calculated manpower cost: <strong id="manpowerCalculated">$0.00</strong></div>
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="manpowerDialog">Cancel</button>
+        <button type="submit" class="button primary">Save manpower</button>
+      </div>
+    </form>
+  </dialog>
+
+
+  <dialog id="jobDialog" class="modal modal-wide">
+    <form id="jobForm" method="dialog">
+      <input id="jobId" type="hidden" />
+      <div class="modal-header">
+        <div><h2 id="jobDialogTitle">Add Site Work</h2><p>Save a worksite, materials and manpower once, then pause and continue it anytime.</p></div>
+        <button type="button" class="icon-button" data-close="jobDialog" aria-label="Close">×</button>
+      </div>
+      <div class="form-grid three">
+        <label class="span-2">Work name<input id="jobName" required placeholder="e.g. Level 3 plaster ceiling" /></label>
+        <label>Status<select id="jobStatus"><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option></select></label>
+        <label>Start date<input id="jobStartDate" type="date" required /></label>
+        <label>End date<input id="jobEndDate" type="date" required /></label>
+        <label>Work site<select id="jobSite" required></select></label>
+        <label>Start time<input id="jobStartTime" type="time" /></label>
+        <label>End time<input id="jobEndTime" type="time" /></label>
+        <label>Default stock source<select id="jobFromSite" required></select></label>
+        <label class="span-2">Address<input id="jobAddress" placeholder="Imported from Calendar location or Address line" /></label>
+        <label>PIC / Contact<input id="jobPic" placeholder="Name or phone" /></label>
+        <label class="span-2">Work description<input id="jobDescription" placeholder="Scope or repeated work details" /></label>
+        <label>Default trade<input id="jobRole" placeholder="e.g. Installer" /></label>
+        <label>Default workers<input id="jobWorkers" type="number" min="0" step="1" value="1" /></label>
+        <label>Default hours each<input id="jobHours" type="number" min="0" step="0.25" value="8" /></label>
+        <label>Default rate/hour<input id="jobRate" type="number" min="0" step="0.01" value="0" /></label>
+        <label class="span-2">Notes<input id="jobNotes" placeholder="Access details, contact, special instructions" /></label>
+      </div>
+      <div class="section-heading compact">
+        <div><h3>Saved material list</h3><p>This list is automatically reused when you continue this work.</p></div>
+        <button id="addJobLineButton" class="button secondary" type="button">+ Add item</button>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Item</th><th>Default quantity</th><th>Unit</th><th></th></tr></thead><tbody id="jobLinesBody"></tbody></table>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close="jobDialog">Cancel</button>
+        <button type="submit" class="button primary">Save site work</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="siteDialog" class="modal small">
+    <form id="siteForm" method="dialog">
+      <div class="modal-header"><h2>Add Location</h2><button type="button" class="icon-button" data-close="siteDialog">×</button></div>
+      <div class="form-grid">
+        <label>Name<input id="siteName" name="name" required /></label>
+        <label>Type<select id="siteType" name="type"><option value="worksite">Work site</option><option value="warehouse">Warehouse / Store</option></select></label>
+        <label>Address<input id="siteAddress" name="address" /></label>
+        <label>PIC / Contact<input id="sitePic" name="pic" /></label>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="siteDialog">Cancel</button><button type="submit" class="button primary">Save location</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="itemDialog" class="modal small">
+    <form id="itemForm" method="dialog">
+      <div class="modal-header"><h2>Add Stock Item</h2><button type="button" class="icon-button" data-close="itemDialog">×</button></div>
+      <div class="form-grid two">
+        <label>Item name<input id="itemName" name="name" required /></label>
+        <label>SKU / Code<input id="itemSku" name="sku" /></label>
+        <label>Unit<input id="itemUnit" name="unit" placeholder="pcs, box, sheet" required /></label>
+        <label>Low-stock warning<input id="itemLowStock" name="lowStock" type="number" min="0" step="0.001" value="0" /></label>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="itemDialog">Cancel</button><button type="submit" class="button primary">Save item</button></div>
+    </form>
+  </dialog>
+
+  <input id="importFile" type="file" accept="application/json" hidden />
+  <script type="module" src="app.js"></script>
+</body>
+</html>

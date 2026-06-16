@@ -1,0 +1,12 @@
+{
+  "name": "KG Stock, Site Work & Delivery Order",
+  "short_name": "KG Stock",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#155eef",
+  "description": "Live multi-site work, stock, delivery orders, site pricing, manpower and Calendar synchronization.",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

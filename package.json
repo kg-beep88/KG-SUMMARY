@@ -1,0 +1,8 @@
+{
+  "name": "kg-stock-delivery-order",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  }
+}

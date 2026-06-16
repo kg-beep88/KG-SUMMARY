@@ -1,0 +1,21 @@
+KG STOCK SUPABASE V1 — VALIDATION
+=================================
+
+Passed locally on 16 June 2026:
+- JavaScript syntax: app.js
+- JavaScript syntax: data-store.js
+- JavaScript syntax: core.js
+- JavaScript syntax: calendar-core.js
+- TypeScript syntax parse: sync-google-calendar Edge Function
+- Historical default and site-specific price selection
+- Delivery Order material calculations
+- Stock-in, transfer and stock-out balances
+- Manpower cost and combined summary
+- Google Calendar address/PIC/date conversion
+- Full-history sync source has no timeMin start-date restriction
+- Incremental sync-token handling present
+- Supabase Row Level Security and approved-user checks present
+- One-minute Cron expression present
+
+Live Supabase, Google OAuth and Google Calendar API calls require the user's
+project credentials and therefore cannot be executed in this offline build environment.
