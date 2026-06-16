@@ -3,8 +3,8 @@
 // This file is safe to use in a browser. NEVER put the service_role key here.
 
 export const supabaseConfig = {
-  url: 'https://zpwtwhbviczmuyvcpivh.supabase.co',
-  publishableKey: 'sb_publishable_Qe50cA8El_GL10q71uwS5w_CRHJr0jk',
+  url: 'https://lgzergcgwfczawfxlxum.supabase.co',
+  publishableKey: 'sb_publishable_ghEXUdYNG4uVbKzfJZQh1g_7Y8zHXnQ',
 };
 
 export const appAccess = {
