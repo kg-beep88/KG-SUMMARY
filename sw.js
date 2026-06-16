@@ -1,4 +1,4 @@
-const CACHE = 'kg-stock-calendar-supabase-v1';
+const CACHE = 'kg-stock-internal-calendar-supabase-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -7,7 +7,6 @@ const APP_SHELL = [
   './core.js',
   './data-store.js',
   './supabase-config.js',
-  './calendar-config.js',
   './calendar-core.js',
   './manifest.webmanifest',
   './icon.svg',

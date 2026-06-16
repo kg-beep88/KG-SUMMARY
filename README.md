@@ -1,35 +1,26 @@
-# KG Stock, Site Work & Delivery Order — Supabase Edition
+# KG Stock & Internal Calendar — Supabase V2
 
-A GitHub Pages PWA backed by Supabase PostgreSQL, Auth, Realtime, Edge Functions and Cron.
+This version uses only:
+
+- GitHub Pages for the website
+- Supabase for login, shared records and live updates
+- An internal editable month calendar built into the website
+
+It does **not** use Google Calendar, Google Calendar API, service-account JSON keys, Supabase Edge Functions or Cron.
 
 ## Main functions
 
-- Shared multi-user stock across warehouses and worksites
-- Delivery Orders with permanently locked historical prices
-- Different dated material prices for different sites
-- Manpower and combined material/manpower cost summaries
-- Google Calendar events copied as site work with address, PIC and original dates
-- Whole-calendar first import plus incremental one-minute background sync
-- Pause, resume, complete and continue the same work later
-- Reuse a site's saved material template or last DO
-- JSON backup, restore and Firebase-to-Supabase migration
-- Six approved Google accounts protected by Supabase Row Level Security
+- Click a date to create site work
+- Click a calendar task to edit it
+- Multi-day work appears on every date
+- Pause, resume, complete or continue the same work
+- Reuse the same material list for the same worksite
+- Delivery Orders, stock, site-specific dated prices and manpower costing
+- Shared Supabase data for the six approved users
+- JSON backup and restore
 
-## Start
+## Existing Supabase user
 
-Read `START-HERE.txt` and run the files in `supabase/sql` in numerical order.
+Upload the files from `SAFE-UPGRADE` to GitHub but keep your existing `supabase-config.js`. Your current sites, stock, prices, DOs, manpower and site work remain in Supabase.
 
-## Architecture
-
-- GitHub Pages: static website and PWA
-- Supabase Auth: staff Google sign-in
-- Supabase PostgreSQL: app records
-- Supabase Realtime: live updates between staff devices
-- Supabase Edge Function: Google Calendar API synchronization
-- Supabase Cron: invokes the Edge Function every minute
-- Google service account: read-only access to the shared group calendar
-
-## Important secrets
-
-Only the Supabase Project URL and publishable key belong in `supabase-config.js`.
-Keep `SUPABASE_SERVICE_ROLE_KEY`, `SYNC_SECRET`, and the Google service-account private key out of GitHub.
+The old deployed Google Calendar Edge Function can remain; this website never calls it. You may delete it later from Supabase Dashboard > Edge Functions.

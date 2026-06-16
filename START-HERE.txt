@@ -1,123 +1,38 @@
-KG STOCK & GOOGLE CALENDAR — SUPABASE SETUP
-===========================================
+KG STOCK + INTERNAL CALENDAR — EASY START
+========================================
 
-THIS VERSION IS NOT A DEMO.
-It stores shared live data in Supabase PostgreSQL.
-Google Calendar can sync every minute even when the website is closed.
+THIS VERSION HAS NO GOOGLE CALENDAR.
+No service account. No JSON key. No Edge Function. No Cron.
 
-FILES YOU WILL USE
-------------------
-supabase-config.js                         Browser connection settings
-supabase/sql/01-database-setup.sql         Tables, six users, RLS and live updates
-supabase/functions/sync-google-calendar/   Calendar background function
-supabase/sql/03-create-one-minute-cron.sql One-minute automatic schedule
-MIGRATE-FROM-FIREBASE.txt                  Move the current data
+EXISTING WEBSITE UPGRADE
+------------------------
+1. Keep your current supabase-config.js.
+2. Upload all other website files to the GitHub repository.
+3. Replace the old files.
+4. Delete calendar-config.js from GitHub if it is still there.
+5. Press Ctrl + F5 on the website.
+6. Sign in and open Calendar.
 
-PART 1 — CREATE SUPABASE PROJECT
---------------------------------
-1. Sign in at Supabase and create a new project.
-2. Wait until the project is ready.
-3. Open Project Settings > API.
-4. Copy:
-   - Project URL
-   - Publishable key
-5. Open supabase-config.js.
-6. Replace PASTE_SUPABASE_PROJECT_URL and PASTE_SUPABASE_PUBLISHABLE_KEY.
-7. Never put a secret/service_role key in supabase-config.js.
+USE THE CALENDAR
+----------------
+1. Click Calendar.
+2. Click a date.
+3. Press + Add work.
+4. Choose the worksite, address, PIC and dates.
+5. Press Save site work.
+6. Click an existing calendar task to edit it.
 
-PART 2 — CREATE DATABASE AND SIX USERS
----------------------------------------
-1. Supabase Dashboard > SQL Editor > New query.
-2. Open supabase/sql/01-database-setup.sql.
-3. Copy the whole file into SQL Editor.
-4. Press Run.
-5. Table Editor should now show app_users and app_records.
+NEW SUPABASE PROJECT ONLY
+-------------------------
+1. Put your Supabase Project URL and publishable key into supabase-config.js.
+2. Run supabase/sql/01-database-setup.sql in Supabase SQL Editor.
+3. Enable Google login in Supabase Authentication. This login is only for access; it does not read Google Calendar.
+4. Add your GitHub Pages URL to Supabase Auth URL Configuration.
+5. Upload all files to GitHub Pages.
 
-PART 3 — SET UP GOOGLE LOGIN FOR WEBSITE USERS
------------------------------------------------
-1. Supabase > Authentication > Providers > Google.
-2. The page shows a Supabase callback URL. Copy it.
-3. In Google Cloud, create an OAuth Client ID of type Web application.
-4. Add your GitHub Pages origin, for example:
-   https://kgchesterlee.github.io
-5. Add the Supabase callback URL under Authorized redirect URIs.
-6. Copy the Google Client ID and Client Secret into the Supabase Google provider.
-7. Enable and save the provider.
-8. Supabase > Authentication > URL Configuration:
-   - Site URL: your complete GitHub Pages website URL
-   - Redirect URL: add the same website URL
+OPTIONAL CLEANUP
+----------------
+If the old version created Google Calendar Cron objects, run:
+supabase/sql/03-optional-remove-old-google-calendar.sql
 
-PART 4 — CREATE GOOGLE CALENDAR SERVICE ACCOUNT
-------------------------------------------------
-This service account is only for automatic Calendar reading. It is different
-from the six staff Google logins.
-
-1. Open the Google Cloud project that has Google Calendar API enabled.
-2. IAM & Admin > Service Accounts > Create service account.
-3. Create a JSON key and download it.
-4. Open Google Calendar in a browser.
-5. Open settings for this group calendar:
-   0e5425bb8991724c36ec3c01185de158526dbe63f9552d06874a665edc810d55@group.calendar.google.com
-6. Under Share with specific people, add the service account email.
-7. Give it See all event details permission.
-8. Do not upload the JSON key to GitHub.
-
-PART 5 — DEPLOY THE CALENDAR EDGE FUNCTION
--------------------------------------------
-Windows requires Node.js 20 or later.
-Open Command Prompt inside this extracted project folder and run:
-
-  npx supabase login
-  npx supabase link --project-ref PASTE_PROJECT_REF
-
-Copy supabase/.env.example to supabase/.env and fill in:
-- service-account client_email
-- service-account private_key
-- supplied Calendar ID
-- a private random SYNC_SECRET of at least 32 characters
-
-Then run:
-
-  npx supabase secrets set --env-file supabase/.env
-  npx supabase functions deploy sync-google-calendar --use-api --no-verify-jwt
-
-PART 6 — TURN ON ONE-MINUTE BACKGROUND SYNC
---------------------------------------------
-1. Open supabase/sql/03-create-one-minute-cron.sql.
-2. Replace PASTE_PROJECT_REF.
-3. Replace PASTE_THE_SAME_LONG_RANDOM_SYNC_SECRET with the exact SYNC_SECRET
-   stored in supabase/.env.
-4. Run the full SQL file in Supabase SQL Editor.
-5. Supabase > Integrations > Cron should show:
-   kg-google-calendar-every-minute
-
-PART 7 — UPLOAD WEBSITE TO GITHUB
-----------------------------------
-1. Upload the browser files and folders to the GitHub Pages repository.
-2. Make sure supabase-config.js is beside index.html.
-3. Remove the old Firebase files if they remain:
-   firebase-config.js
-   database.rules.json
-   google-calendar.js
-4. Commit changes.
-5. Open the GitHub Pages website and press Ctrl + F5.
-6. The badge should say Live Supabase data.
-7. Sign in with one of the six approved Google accounts.
-
-PART 8 — COPY CURRENT FIREBASE DATA
-------------------------------------
-Follow MIGRATE-FROM-FIREBASE.txt.
-
-FIRST CALENDAR COPY
--------------------
-1. Open Site Work.
-2. Press Copy whole calendar once.
-3. After that, Cron checks every minute automatically.
-4. The Sync now button is available for an immediate manual check.
-
-SECURITY
---------
-- Publishable key in the website is normal and safe with RLS enabled.
-- Never publish the Supabase service_role key.
-- Never publish the Google service-account JSON/private key.
-- Six approved users are controlled by the app_users table.
+You may delete sync-google-calendar from Supabase Edge Functions, but it is not necessary.

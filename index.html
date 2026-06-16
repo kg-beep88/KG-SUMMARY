@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#155eef" />
-  <meta name="description" content="Supabase-powered multi-site stock, Google Calendar site work, delivery orders, historical pricing, manpower and material costing." />
-  <title>KG Stock & Delivery Order — Supabase</title>
+  <meta name="description" content="Supabase-powered multi-site stock, editable work calendar, delivery orders, historical pricing, manpower and material costing." />
+  <title>KG Stock & Internal Calendar — Supabase</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
@@ -25,6 +25,7 @@
 
       <nav class="nav" aria-label="Main navigation">
         <button class="nav-button active" data-view="dashboard"><span>▦</span> Dashboard</button>
+        <button class="nav-button" data-view="calendar"><span>▦</span> Calendar</button>
         <button class="nav-button" data-view="jobs"><span>▶</span> Site Work</button>
         <button class="nav-button" data-view="deliveryOrders"><span>▤</span> Delivery Orders</button>
         <button class="nav-button" data-view="stock"><span>▣</span> Stock</button>
@@ -54,6 +55,7 @@
       </header>
 
       <section id="dashboardView" class="view active"></section>
+      <section id="calendarView" class="view"></section>
       <section id="jobsView" class="view"></section>
       <section id="deliveryOrdersView" class="view"></section>
       <section id="stockView" class="view"></section>
@@ -196,7 +198,7 @@
         <label>Start time<input id="jobStartTime" type="time" /></label>
         <label>End time<input id="jobEndTime" type="time" /></label>
         <label>Default stock source<select id="jobFromSite" required></select></label>
-        <label class="span-2">Address<input id="jobAddress" placeholder="Imported from Calendar location or Address line" /></label>
+        <label class="span-2">Address<input id="jobAddress" placeholder="Worksite address" /></label>
         <label>PIC / Contact<input id="jobPic" placeholder="Name or phone" /></label>
         <label class="span-2">Work description<input id="jobDescription" placeholder="Scope or repeated work details" /></label>
         <label>Default trade<input id="jobRole" placeholder="e.g. Installer" /></label>

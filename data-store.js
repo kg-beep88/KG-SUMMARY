@@ -11,7 +11,6 @@ const EMPTY_DATA = {
   manpower: {},
   jobs: {},
   jobActivities: {},
-  calendarSync: {},
 };
 
 function clone(value) {
@@ -33,7 +32,6 @@ function normalizeData(value) {
     manpower: value?.manpower || {},
     jobs: value?.jobs || {},
     jobActivities: value?.jobActivities || {},
-    calendarSync: value?.calendarSync || {},
   };
 }
 
@@ -53,7 +51,6 @@ class SetupRequiredStore {
   async remove() { throw new Error('Supabase is not configured.'); }
   async updateMany() { throw new Error('Supabase is not configured.'); }
   async replaceAll() { throw new Error('Supabase is not configured.'); }
-  async invokeCalendarSync() { throw new Error('Supabase is not configured.'); }
 }
 
 class SupabaseStore {
@@ -229,15 +226,6 @@ class SupabaseStore {
     if (error) throw error;
   }
 
-  async invokeCalendarSync({ forceFull = false } = {}) {
-    this.requireUser();
-    const { data, error } = await this.client.functions.invoke(appAccess.calendarFunctionName, {
-      body: { forceFull: Boolean(forceFull), source: 'browser' },
-    });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
-    return data || {};
-  }
 }
 
 export async function createStore() {

@@ -19,11 +19,11 @@ import {
   normalizeTemplateLines,
   todayISO,
 } from './core.js';
-import { googleCalendarConfig } from './calendar-config.js';
-import { displaySchedule, normalizeKey } from './calendar-core.js';
+import { dateLabel, displaySchedule, jobOccursOnDate, monthGridDates, monthTitle, normalizeKey, shiftMonth } from './calendar-core.js';
 
 const VIEW_META = {
   dashboard: ['Dashboard', 'Live overview of stock, delivery orders and costs.'],
+  calendar: ['Work Calendar', 'See and edit all site work directly in this website.'],
   jobs: ['Site Work', 'Save repeated work by site, then pause, resume and reuse it anytime.'],
   deliveryOrders: ['Delivery Orders', 'Create, print and share site delivery orders.'],
   stock: ['Stock', 'See current quantity at every warehouse and work site.'],
@@ -43,7 +43,10 @@ let jobStatusFilter = 'open';
 let jobSiteFilter = '';
 let jobSearch = '';
 let priceSiteFilter = '';
-let calendarSyncInProgress = false;
+let calendarMonth = `${todayISO().slice(0, 7)}-01`;
+let calendarSelectedDate = todayISO();
+let calendarSiteFilter = '';
+let calendarStatusFilter = 'all';
 let dashboardFilters = { startDate: firstDayOfMonthISO(), endDate: todayISO(), siteId: '' };
 let stockSiteFilter = '';
 let doFilters = { startDate: firstDayOfMonthISO(), endDate: todayISO(), siteId: '' };
@@ -54,7 +57,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function emptyData() {
   return {
-    settings: {}, sites: {}, items: {}, prices: {}, stockTransactions: {}, deliveryOrders: {}, manpower: {}, jobs: {}, jobActivities: {}, calendarSync: {},
+    settings: {}, sites: {}, items: {}, prices: {}, stockTransactions: {}, deliveryOrders: {}, manpower: {}, jobs: {}, jobActivities: {},
   };
 }
 
@@ -110,6 +113,12 @@ function bindStaticEvents() {
   $('#manpowerJob').addEventListener('change', () => applyJobToManpower($('#manpowerJob').value));
   ['#manpowerWorkers', '#manpowerHours', '#manpowerRate'].forEach((selector) => $(selector).addEventListener('input', updateManpowerCalculation));
   $('#jobForm').addEventListener('submit', saveJob);
+  $('#jobSite').addEventListener('change', () => {
+    const site = data.sites?.[$('#jobSite').value];
+    if (!site) return;
+    if (!$('#jobAddress').value.trim()) $('#jobAddress').value = site.address || '';
+    if (!$('#jobPic').value.trim()) $('#jobPic').value = site.pic || '';
+  });
   $('#addJobLineButton').addEventListener('click', () => {
     jobDraftLines.push({ rowId: uid('jobline'), itemId: activeItems()[0]?.id || '', quantity: 1 });
     renderJobLines();
@@ -182,6 +191,7 @@ function renderAll() {
   $('#brandName').textContent = companyName;
   document.title = companyName;
   renderDashboard();
+  renderCalendar();
   renderJobs();
   renderDeliveryOrders();
   renderStock();
@@ -261,7 +271,6 @@ function renderRecentDOs(rows, currency) {
 
 function jobOptions(selected = '', siteId = '') {
   const jobs = asArray(data.jobs)
-    .filter((job) => job.calendarStatus !== 'cancelled')
     .filter((job) => !siteId || job.siteId === siteId)
     .sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')) || String(a.name || '').localeCompare(String(b.name || '')));
   return '<option value="">No saved work selected</option>' + jobs.map((job) => {
@@ -287,6 +296,54 @@ function jobStatusBadge(status = 'active') {
   return `<span class="badge ${meta[1]}">${escapeHtml(meta[0])}</span>`;
 }
 
+function renderCalendar() {
+  const allJobs = asArray(data.jobs)
+    .filter((job) => !calendarSiteFilter || job.siteId === calendarSiteFilter)
+    .filter((job) => calendarStatusFilter === 'all' || job.status === calendarStatusFilter)
+    .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')) || String(a.startDateTime || '').localeCompare(String(b.startDateTime || '')));
+  const cells = monthGridDates(calendarMonth);
+  const selectedJobs = allJobs.filter((job) => jobOccursOnDate(job, calendarSelectedDate));
+  const today = todayISO();
+
+  $('#calendarView').innerHTML = `
+    <div class="toolbar calendar-toolbar">
+      <div class="actions">
+        <button class="button secondary" data-action="calendar-prev">← Previous</button>
+        <button class="button secondary" data-action="calendar-today">Today</button>
+        <button class="button secondary" data-action="calendar-next">Next →</button>
+      </div>
+      <div class="calendar-month-title">${escapeHtml(monthTitle(calendarMonth))}</div>
+      <div class="actions">
+        <label>Work site<select id="calendarSiteFilter">${siteOptions(calendarSiteFilter, true)}</select></label>
+        <label>Status<select id="calendarStatusFilter">
+          <option value="all" ${calendarStatusFilter === 'all' ? 'selected' : ''}>All status</option>
+          <option value="active" ${calendarStatusFilter === 'active' ? 'selected' : ''}>Active</option>
+          <option value="paused" ${calendarStatusFilter === 'paused' ? 'selected' : ''}>Paused</option>
+          <option value="completed" ${calendarStatusFilter === 'completed' ? 'selected' : ''}>Completed</option>
+        </select></label>
+        <button class="button primary" data-action="new-calendar-job" data-date="${calendarSelectedDate}">+ Add work</button>
+      </div>
+    </div>
+    <div class="card calendar-card">
+      <div class="calendar-weekdays">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => `<div>${day}</div>`).join('')}</div>
+      <div class="calendar-grid">${cells.map((cell) => {
+        const dayJobs = allJobs.filter((job) => jobOccursOnDate(job, cell.date));
+        const classes = ['calendar-day', cell.inMonth ? '' : 'outside-month', cell.date === today ? 'today' : '', cell.date === calendarSelectedDate ? 'selected' : ''].filter(Boolean).join(' ');
+        return `<div class="${classes}">
+          <button class="calendar-day-number" data-action="select-calendar-day" data-date="${cell.date}" title="Select ${cell.date}">${cell.day}</button>
+          <div class="calendar-events">${dayJobs.slice(0, 3).map((job) => `<button class="calendar-event ${escapeHtml(job.status || 'active')}" data-action="edit-calendar-job" data-id="${job.id}" title="${escapeHtml(`${job.name} · ${labelForSite(data.sites, job.siteId)}`)}"><span>${escapeHtml(job.name || 'Untitled work')}</span><small>${escapeHtml(labelForSite(data.sites, job.siteId))}</small></button>`).join('')}${dayJobs.length > 3 ? `<button class="calendar-more" data-action="select-calendar-day" data-date="${cell.date}">+${dayJobs.length - 3} more</button>` : ''}</div>
+        </div>`;
+      }).join('')}</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="section-heading"><div><h2>${escapeHtml(dateLabel(calendarSelectedDate))}</h2><p>Click a task to edit it. Click Add work to create a task on this date.</p></div><button class="button primary" data-action="new-calendar-job" data-date="${calendarSelectedDate}">+ Add work</button></div>
+      ${selectedJobs.length ? `<div class="calendar-day-list">${selectedJobs.map((job) => `<div class="list-row"><div><strong>${escapeHtml(job.name || 'Untitled work')}</strong><p>${escapeHtml(displaySchedule(job))} · ${escapeHtml(labelForSite(data.sites, job.siteId))}${job.pic ? ` · PIC: ${escapeHtml(job.pic)}` : ''}</p></div><div class="actions">${jobStatusBadge(job.status)}<button class="button secondary small" data-action="edit-calendar-job" data-id="${job.id}">Edit</button><button class="button primary small" data-action="job-do" data-id="${job.id}">New DO</button></div></div>`).join('')}</div>` : emptyState('No work on this date', 'Press Add work to create the first task.')}
+    </div>`;
+
+  $('#calendarSiteFilter').addEventListener('change', (event) => { calendarSiteFilter = event.target.value; renderCalendar(); });
+  $('#calendarStatusFilter').addEventListener('change', (event) => { calendarStatusFilter = event.target.value; renderCalendar(); });
+}
+
 function renderJobs() {
   const currency = data.settings?.currency || 'SGD';
   const allJobs = asArray(data.jobs).sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -301,15 +358,9 @@ function renderJobs() {
     })
     .filter((job) => {
       if (jobStatusFilter === 'all') return true;
-      if (jobStatusFilter === 'open') return job.status !== 'completed' && job.calendarStatus !== 'cancelled';
-      if (jobStatusFilter === 'cancelled') return job.calendarStatus === 'cancelled';
+      if (jobStatusFilter === 'open') return job.status !== 'completed';
       return job.status === jobStatusFilter;
     });
-  const sync = data.calendarSync || {};
-  const syncStatus = sync.status === 'error'
-    ? `Sync error: ${sync.lastError || 'Check Edge Function logs'}`
-    : `Background sync scheduled every ${Math.round(googleCalendarConfig.syncEveryMs / 1000)} seconds`;
-  const lastSync = sync.lastSyncAt ? new Date(sync.lastSyncAt).toLocaleString('en-SG') : 'Not synced yet';
 
   $('#jobsView').innerHTML = `
     <div class="toolbar">
@@ -319,41 +370,32 @@ function renderJobs() {
           <option value="active" ${jobStatusFilter === 'active' ? 'selected' : ''}>Active only</option>
           <option value="paused" ${jobStatusFilter === 'paused' ? 'selected' : ''}>Paused only</option>
           <option value="completed" ${jobStatusFilter === 'completed' ? 'selected' : ''}>Completed</option>
-          <option value="cancelled" ${jobStatusFilter === 'cancelled' ? 'selected' : ''}>Calendar cancelled</option>
           <option value="all" ${jobStatusFilter === 'all' ? 'selected' : ''}>All work</option>
         </select></label>
         <label>Work site<select id="jobSiteFilter">${siteOptions(jobSiteFilter, true)}</select></label>
         <label>Find work<input id="jobSearch" type="search" value="${escapeHtml(jobSearch)}" placeholder="Type, then press Enter"></label>
       </div>
       <div class="actions">
-        <button class="button secondary" data-action="sync-calendar">Sync now</button>
-        <button class="button primary" data-action="copy-whole-calendar">Copy whole calendar</button>
-        <button class="button primary" data-action="new-job">+ Manual site work</button>
+        <button class="button secondary" data-view-link="calendar">Open calendar</button>
+        <button class="button primary" data-action="new-job">+ New site work</button>
       </div>
     </div>
-    <div class="notice calendar-notice">
-      <strong>Google Calendar:</strong> ${escapeHtml(syncStatus)} · Full-history import has no starting-date limit. Calendar ID ending ${escapeHtml(googleCalendarConfig.calendarId.slice(-28))}. Last sync: ${escapeHtml(lastSync)}.
-      Supabase Cron runs the one-minute pull even when this website is closed. Imported start/end dates and the complete event snapshot are kept in Supabase.
-    </div>
+    <div class="notice calendar-notice"><strong>Internal calendar:</strong> Work dates are saved directly in Supabase. There is no Google Calendar connection, Edge Function, service account or background Cron.</div>
     <div class="card" style="margin-top:16px">
       <div class="section-heading"><div><h2>Site work register</h2><p>Pause, resume, reuse materials and continue the same worksite without losing previous dates.</p></div><span class="badge info">${jobs.length} shown</span></div>
-      ${jobs.length ? `<div class="table-wrap"><table><thead><tr><th>Dates</th><th>Work / Address</th><th>PIC</th><th>Status</th><th>DO / Cost</th><th>Source</th><th>Actions</th></tr></thead><tbody>${jobs.map((job) => {
+      ${jobs.length ? `<div class="table-wrap"><table><thead><tr><th>Dates</th><th>Work / Address</th><th>PIC</th><th>Status</th><th>DO / Cost</th><th>Actions</th></tr></thead><tbody>${jobs.map((job) => {
         const summary = summarizeJob(data, job.id);
         const site = data.sites?.[job.siteId];
         const address = job.address || site?.address || site?.name || '—';
         const pic = job.pic || site?.pic || '—';
-        const source = job.source === 'google_calendar'
-          ? `<span class="badge info">Calendar</span>${job.calendarStatus === 'cancelled' ? ' <span class="badge danger">Cancelled</span>' : ''}`
-          : '<span class="badge">Manual</span>';
         const nextStatusAction = job.status === 'paused' ? 'resume-job' : 'pause-job';
         const nextStatusLabel = job.status === 'paused' ? 'Resume' : 'Pause';
         return `<tr>
-          <td><strong>${escapeHtml(displaySchedule(job))}</strong>${job.source === 'google_calendar' && job.calendarHtmlLink ? `<p><a href="${escapeHtml(job.calendarHtmlLink)}" target="_blank" rel="noopener">Open calendar event</a></p>` : ''}</td>
+          <td><strong>${escapeHtml(displaySchedule(job))}</strong></td>
           <td><strong>${escapeHtml(job.name || 'Untitled work')}</strong><p>${escapeHtml(address)}</p>${job.description ? `<p class="truncate">${escapeHtml(job.description)}</p>` : ''}</td>
           <td>${escapeHtml(pic)}</td>
           <td>${jobStatusBadge(job.status)}${summary.lastWorkedDate ? `<p>Last cost: ${escapeHtml(summary.lastWorkedDate)}</p>` : ''}</td>
           <td><strong>${summary.deliveryOrderCount} DO</strong><p>${money(summary.materialCost, currency)} material</p><p>${money(summary.manpowerCost, currency)} manpower</p></td>
-          <td>${source}</td>
           <td><div class="actions">
             <button class="button primary small" data-action="job-do" data-id="${job.id}">New DO</button>
             <button class="button secondary small" data-action="job-manpower" data-id="${job.id}">Manpower</button>
@@ -362,7 +404,7 @@ function renderJobs() {
             ${job.status !== 'completed' ? `<button class="button secondary small" data-action="${nextStatusAction}" data-id="${job.id}">${nextStatusLabel}</button><button class="button secondary small" data-action="complete-job" data-id="${job.id}">Complete</button>` : `<button class="button secondary small" data-action="resume-job" data-id="${job.id}">Reopen</button>`}
           </div></td>
         </tr>`;
-      }).join('')}</tbody></table></div>` : emptyState('No site work found', 'Connect Google Calendar or add manual site work.')}
+      }).join('')}</tbody></table></div>` : emptyState('No site work found', 'Add work from the internal calendar or the New site work button.')}
     </div>`;
 
   $('#jobStatusFilter').addEventListener('change', (event) => { jobStatusFilter = event.target.value; renderJobs(); });
@@ -370,33 +412,7 @@ function renderJobs() {
   $('#jobSearch').addEventListener('change', (event) => { jobSearch = event.target.value; renderJobs(); });
 }
 
-async function syncGoogleCalendar(manual = false, forceFull = false) {
-  if (calendarSyncInProgress) return;
-  if (store.mode !== 'supabase' || !store.getUser()) {
-    if (manual) showToast('Sign in to Supabase first.', true);
-    return;
-  }
-
-  calendarSyncInProgress = true;
-  renderJobs();
-  try {
-    const result = await store.invokeCalendarSync({ forceFull });
-    if (result?.skipped) {
-      showToast('A Calendar sync is already running.');
-    } else {
-      const prefix = forceFull || result?.fullSync ? 'Whole calendar copied' : 'Calendar changes synced';
-      showToast(`${prefix}: ${Number(result?.importedJobs || 0)} new, ${Number(result?.updatedJobs || 0)} updated, ${Number(result?.cancelledEvents || 0)} cancelled.`);
-    }
-  } catch (error) {
-    console.error(error);
-    showToast(error.message || 'Calendar sync failed. Check the Supabase Edge Function setup.', true);
-  } finally {
-    calendarSyncInProgress = false;
-    renderJobs();
-  }
-}
-
-function openJobDialog(jobId = '', cloneFromId = '') {
+function openJobDialog(jobId = '', cloneFromId = '', selectedDate = '') {
   if (!requireReady(['sites'])) return;
   const existing = jobId ? data.jobs?.[jobId] : null;
   const source = cloneFromId ? data.jobs?.[cloneFromId] : existing;
@@ -410,8 +426,9 @@ function openJobDialog(jobId = '', cloneFromId = '') {
   const warehouse = activeSites().find((site) => site.type === 'warehouse');
   if (!source?.fromSiteId && warehouse) $('#jobFromSite').value = warehouse.id;
   $('#jobName').value = source?.name || '';
-  $('#jobStartDate').value = cloneFromId ? todayISO() : source?.startDate || todayISO();
-  $('#jobEndDate').value = cloneFromId ? todayISO() : source?.endDate || source?.startDate || todayISO();
+  const preferredDate = selectedDate || todayISO();
+  $('#jobStartDate').value = cloneFromId ? preferredDate : source?.startDate || preferredDate;
+  $('#jobEndDate').value = cloneFromId ? preferredDate : source?.endDate || source?.startDate || preferredDate;
   $('#jobStartTime').value = cloneFromId ? '' : String(source?.startDateTime || '').slice(11, 16);
   $('#jobEndTime').value = cloneFromId ? '' : String(source?.endDateTime || '').slice(11, 16);
   $('#jobAddress').value = source?.address || data.sites?.[source?.siteId]?.address || '';
@@ -493,7 +510,7 @@ async function saveJob(event) {
         ratePerHour: Number($('#jobRate').value || 0),
       },
       workNotes: $('#jobNotes').value.trim(),
-      source: existing?.source || $('#jobForm').dataset.source || 'manual',
+      source: 'internal_calendar',
       continuedFromJobId: $('#jobForm').dataset.continuedFromJobId || '',
       createdAt: existing?.createdAt || timestamp,
       createdBy: existing?.createdBy || user,
@@ -765,12 +782,12 @@ function renderSettings() {
         </form>
       </div>
       <div class="card">
-        <div class="section-heading"><div><h2>Backup and restore</h2><p>Download sites, Calendar work, items, prices, DOs, stock and manpower as JSON.</p></div></div>
+        <div class="section-heading"><div><h2>Backup and restore</h2><p>Download sites, calendar work, items, prices, DOs, stock and manpower as JSON.</p></div></div>
         <div class="list">
           <div class="list-row"><div><strong>Export backup</strong><p>Keep a dated copy on your computer or cloud drive.</p></div><button class="button secondary" data-action="export-backup">Download</button></div>
           <div class="list-row"><div><strong>Restore backup</strong><p>Replaces the current database with a selected JSON backup.</p></div><button class="button secondary" data-action="import-backup">Choose file</button></div>
         </div>
-        <div class="notice" style="margin-top:16px"><strong>${store.mode === 'supabase' ? 'Live system:' : 'Setup required:'}</strong> ${store.mode === 'supabase' ? 'Data is stored in Supabase PostgreSQL with live updates and Row Level Security. There is no browser-only demo database.' : 'Complete supabase-config.js and run supabase/sql/01-database-setup.sql before publishing.'}</div><div class="notice" style="margin-top:12px"><strong>Calendar source:</strong> ${escapeHtml(googleCalendarConfig.calendarId)}. The first/full copy imports all available Calendar history with no start-date filter. Supabase Cron can invoke the Edge Function every ${Math.round(googleCalendarConfig.syncEveryMs / 1000)} seconds even while the website is closed.</div>
+        <div class="notice" style="margin-top:16px"><strong>${store.mode === 'supabase' ? 'Live system:' : 'Setup required:'}</strong> ${store.mode === 'supabase' ? 'Data is stored in Supabase PostgreSQL with live updates and Row Level Security. There is no browser-only demo database.' : 'Complete supabase-config.js and run supabase/sql/01-database-setup.sql before publishing.'}</div><div class="notice" style="margin-top:12px"><strong>Internal calendar:</strong> All work dates are created and edited on this GitHub website and saved directly to Supabase. Google Calendar, service-account keys, Edge Functions and Cron are not used.</div>
       </div>
     </div>`;
   $('#settingsForm').addEventListener('submit', saveSettings);
@@ -1139,6 +1156,12 @@ function handleDynamicClick(event) {
     'new-price': openPriceDialog,
     'new-manpower': () => openManpowerDialog(),
     'new-job': () => openJobDialog(),
+    'new-calendar-job': () => openJobDialog('', '', button.dataset.date || calendarSelectedDate),
+    'edit-calendar-job': () => openJobDialog(id),
+    'select-calendar-day': () => { calendarSelectedDate = button.dataset.date || todayISO(); calendarMonth = `${calendarSelectedDate.slice(0, 7)}-01`; renderCalendar(); },
+    'calendar-prev': () => { calendarMonth = shiftMonth(calendarMonth, -1); calendarSelectedDate = calendarMonth; renderCalendar(); },
+    'calendar-next': () => { calendarMonth = shiftMonth(calendarMonth, 1); calendarSelectedDate = calendarMonth; renderCalendar(); },
+    'calendar-today': () => { calendarSelectedDate = todayISO(); calendarMonth = `${calendarSelectedDate.slice(0, 7)}-01`; renderCalendar(); },
     'edit-job': () => openJobDialog(id),
     'clone-job': () => openJobDialog('', id),
     'pause-job': () => changeJobStatus(id, 'paused'),
@@ -1146,8 +1169,6 @@ function handleDynamicClick(event) {
     'complete-job': () => changeJobStatus(id, 'completed'),
     'job-do': () => openDODialog(id),
     'job-manpower': () => openManpowerDialog(id),
-    'sync-calendar': () => syncGoogleCalendar(true, false),
-    'copy-whole-calendar': () => syncGoogleCalendar(true, true),
     'new-site': openSiteDialog,
     'new-item': openItemDialog,
     'print-do': () => printDeliveryOrder(id),
