@@ -1,53 +1,30 @@
-KG SITE CONTROL V3 — VERY EASY UPGRADE
-======================================
+KG SIMPLE SITE CALENDAR V4
+==========================
 
-THIS VERSION HAS NO GOOGLE CALENDAR.
-It uses GitHub Pages + your current Supabase data.
-
-STEP 1 — RUN THE SUPABASE UPDATE
---------------------------------
-1. Open Supabase.
-2. Open SQL Editor.
-3. Click New query.
-4. Open RUN-THIS-IN-SUPABASE-FIRST.sql from this ZIP.
-5. Copy everything inside.
-6. Paste it into Supabase.
-7. Click Run.
-8. It should say Success.
-
-STEP 2 — UPLOAD TO GITHUB
+FOR EXISTING LIVE WEBSITE
 -------------------------
-1. Keep your current supabase-config.js in GitHub.
-2. Upload all files from the SAFE-UPGRADE ZIP.
-3. Replace the old files.
-4. Commit changes.
-5. Open the website and press Ctrl + F5.
+1. Use the SAFE-UPGRADE ZIP.
+2. Extract it.
+3. Upload all files to the root of the GitHub repository.
+4. Replace the old files.
+5. Do not delete your current supabase-config.js.
+6. Commit changes.
+7. Open the website and press Ctrl + F5.
 
-STEP 3 — USE THE ADDRESS PAGE
------------------------------
-1. Sign in.
-2. Open Address Summary. It is the first page.
-3. Select the site address.
-4. You can see material, DO count, worker cost, ladders, scaffolds and claims.
-
-ADD WORKER
+HOW TO USE
 ----------
-Workers > Add worker > enter name, role, pay type and normal rate.
+Calendar > choose date > Site entry
 
-ADD WORKER COST TO SITE
------------------------
-Address Summary > select address > Worker cost > choose worker > enter hours/days > Save.
+Choose:
+- Address
+- Worker / Foreman / Subcon / All
+- Active / Pause / Claim / Complete
+- Work or Work cannot be done
+- Equipment needed
 
-BORROW LADDER OR SCAFFOLD
--------------------------
-Address Summary > Borrow equipment > choose ladder/scaffold > type/size > quantity > Save.
+Use the buttons for:
+- Delivery to site
+- Stock return from site
+- Ladder / equipment borrow and partial return
 
-RETURN PART ONLY
-----------------
-Address Summary > Return beside the equipment > enter quantity returned now > Save.
-The rest remains outstanding and can be returned later.
-
-MAKE CLAIM AND CLOSE SITE
--------------------------
-Address Summary > Add claim > amount/status > tick Close this site after saving > Save claim.
-The site history remains visible and equipment can still be returned later.
+No Google Calendar setup is needed.

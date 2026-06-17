@@ -1,4 +1,4 @@
-KG Site Control v3
-Build date: 2026-06-17
-Storage: Supabase
-Calendar: Internal Supabase calendar only
+KG Stock Supabase Simple Calendar v4
+Built: 2026-06-17
+Google Calendar: removed
+Main view: internal editable calendar

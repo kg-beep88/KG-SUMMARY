@@ -1,0 +1,5 @@
+SAFE UPGRADE
+============
+This package intentionally does not contain supabase-config.js.
+Upload these files over the current GitHub website and keep the existing live supabase-config.js.
+No new Supabase SQL migration is required.

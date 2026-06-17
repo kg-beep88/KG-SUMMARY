@@ -1,17 +1,12 @@
 {
-  "name": "KG Site Control, Internal Calendar & Delivery Order",
-  "short_name": "KG Site Control",
+  "name": "KG Simple Site Calendar",
+  "short_name": "KG Calendar",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f5f7fb",
+  "background_color": "#f3f6fb",
   "theme_color": "#155eef",
-  "description": "Live multi-site work calendar, stock, delivery orders, site pricing, manpower and material costing stored in Supabase.",
+  "description": "Simple worksite calendar with Supabase data, deliveries, stock returns and equipment tracking.",
   "icons": [
-    {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }
