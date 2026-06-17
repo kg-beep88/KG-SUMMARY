@@ -1,38 +1,53 @@
-KG STOCK + INTERNAL CALENDAR — EASY START
-========================================
+KG SITE CONTROL V3 — VERY EASY UPGRADE
+======================================
 
 THIS VERSION HAS NO GOOGLE CALENDAR.
-No service account. No JSON key. No Edge Function. No Cron.
+It uses GitHub Pages + your current Supabase data.
 
-EXISTING WEBSITE UPGRADE
-------------------------
-1. Keep your current supabase-config.js.
-2. Upload all other website files to the GitHub repository.
-3. Replace the old files.
-4. Delete calendar-config.js from GitHub if it is still there.
-5. Press Ctrl + F5 on the website.
-6. Sign in and open Calendar.
+STEP 1 — RUN THE SUPABASE UPDATE
+--------------------------------
+1. Open Supabase.
+2. Open SQL Editor.
+3. Click New query.
+4. Open RUN-THIS-IN-SUPABASE-FIRST.sql from this ZIP.
+5. Copy everything inside.
+6. Paste it into Supabase.
+7. Click Run.
+8. It should say Success.
 
-USE THE CALENDAR
-----------------
-1. Click Calendar.
-2. Click a date.
-3. Press + Add work.
-4. Choose the worksite, address, PIC and dates.
-5. Press Save site work.
-6. Click an existing calendar task to edit it.
-
-NEW SUPABASE PROJECT ONLY
+STEP 2 — UPLOAD TO GITHUB
 -------------------------
-1. Put your Supabase Project URL and publishable key into supabase-config.js.
-2. Run supabase/sql/01-database-setup.sql in Supabase SQL Editor.
-3. Enable Google login in Supabase Authentication. This login is only for access; it does not read Google Calendar.
-4. Add your GitHub Pages URL to Supabase Auth URL Configuration.
-5. Upload all files to GitHub Pages.
+1. Keep your current supabase-config.js in GitHub.
+2. Upload all files from the SAFE-UPGRADE ZIP.
+3. Replace the old files.
+4. Commit changes.
+5. Open the website and press Ctrl + F5.
 
-OPTIONAL CLEANUP
+STEP 3 — USE THE ADDRESS PAGE
+-----------------------------
+1. Sign in.
+2. Open Address Summary. It is the first page.
+3. Select the site address.
+4. You can see material, DO count, worker cost, ladders, scaffolds and claims.
+
+ADD WORKER
+----------
+Workers > Add worker > enter name, role, pay type and normal rate.
+
+ADD WORKER COST TO SITE
+-----------------------
+Address Summary > select address > Worker cost > choose worker > enter hours/days > Save.
+
+BORROW LADDER OR SCAFFOLD
+-------------------------
+Address Summary > Borrow equipment > choose ladder/scaffold > type/size > quantity > Save.
+
+RETURN PART ONLY
 ----------------
-If the old version created Google Calendar Cron objects, run:
-supabase/sql/03-optional-remove-old-google-calendar.sql
+Address Summary > Return beside the equipment > enter quantity returned now > Save.
+The rest remains outstanding and can be returned later.
 
-You may delete sync-google-calendar from Supabase Edge Functions, but it is not necessary.
+MAKE CLAIM AND CLOSE SITE
+-------------------------
+Address Summary > Add claim > amount/status > tick Close this site after saving > Save claim.
+The site history remains visible and equipment can still be returned later.

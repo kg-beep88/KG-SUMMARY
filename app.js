@@ -10,10 +10,13 @@ import {
   labelForItem,
   labelForSite,
   manpowerCost,
+  manpowerUnitLabel,
   money,
   number,
   resolvePrice,
   summarize,
+  summarizeSite,
+  equipmentOutstanding,
   summarizeJob,
   latestIssuedDOForJob,
   normalizeTemplateLines,
@@ -22,13 +25,15 @@ import {
 import { dateLabel, displaySchedule, jobOccursOnDate, monthGridDates, monthTitle, normalizeKey, shiftMonth } from './calendar-core.js';
 
 const VIEW_META = {
+  siteSummary: ['Address Summary', 'See everything used, borrowed, claimed and paid at one address.'],
   dashboard: ['Dashboard', 'Live overview of stock, delivery orders and costs.'],
   calendar: ['Work Calendar', 'See and edit all site work directly in this website.'],
   jobs: ['Site Work', 'Save repeated work by site, then pause, resume and reuse it anytime.'],
   deliveryOrders: ['Delivery Orders', 'Create, print and share site delivery orders.'],
   stock: ['Stock', 'See current quantity at every warehouse and work site.'],
   prices: ['Price History', 'Keep dated prices so every DO uses the correct historical cost.'],
-  manpower: ['Manpower', 'Record workers, hours and labour rates by site and date.'],
+  manpower: ['Manpower', 'Record each worker, role and individual pay by site and date.'],
+  workers: ['Workers', 'Save each worker’s role and normal pay rate.'],
   master: ['Sites & Items', 'Maintain locations, stock items, units and warning levels.'],
   settings: ['Settings & Backup', 'Company settings, JSON export and restore.'],
 };
@@ -36,7 +41,7 @@ const VIEW_META = {
 let store;
 let unsubscribeData = null;
 let data = emptyData();
-let currentView = 'dashboard';
+let currentView = 'siteSummary';
 let doDraftLines = [];
 let jobDraftLines = [];
 let jobStatusFilter = 'open';
@@ -49,6 +54,8 @@ let calendarSiteFilter = '';
 let calendarStatusFilter = 'all';
 let dashboardFilters = { startDate: firstDayOfMonthISO(), endDate: todayISO(), siteId: '' };
 let stockSiteFilter = '';
+let siteSummarySiteId = '';
+let workerSearch = '';
 let doFilters = { startDate: firstDayOfMonthISO(), endDate: todayISO(), siteId: '' };
 let toastTimer;
 
@@ -57,7 +64,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function emptyData() {
   return {
-    settings: {}, sites: {}, items: {}, prices: {}, stockTransactions: {}, deliveryOrders: {}, manpower: {}, jobs: {}, jobActivities: {},
+    settings: {}, sites: {}, items: {}, prices: {}, stockTransactions: {}, deliveryOrders: {}, manpower: {}, jobs: {}, jobActivities: {}, workers: {}, equipmentTransactions: {}, siteClaims: {},
   };
 }
 
@@ -111,7 +118,9 @@ function bindStaticEvents() {
   $('#priceForm').addEventListener('submit', savePrice);
   $('#manpowerForm').addEventListener('submit', saveManpower);
   $('#manpowerJob').addEventListener('change', () => applyJobToManpower($('#manpowerJob').value));
-  ['#manpowerWorkers', '#manpowerHours', '#manpowerRate'].forEach((selector) => $(selector).addEventListener('input', updateManpowerCalculation));
+  ['#manpowerUnits', '#manpowerRate'].forEach((selector) => $(selector).addEventListener('input', updateManpowerCalculation));
+  $('#manpowerWorker').addEventListener('change', applyWorkerToManpower);
+  $('#manpowerPayType').addEventListener('change', updateManpowerPayTypeUI);
   $('#jobForm').addEventListener('submit', saveJob);
   $('#jobSite').addEventListener('change', () => {
     const site = data.sites?.[$('#jobSite').value];
@@ -126,6 +135,13 @@ function bindStaticEvents() {
   $('#jobLinesBody').addEventListener('change', handleJobLineInput);
   $('#jobLinesBody').addEventListener('click', handleJobLineClick);
   $('#siteForm').addEventListener('submit', saveSite);
+  $('#workerForm').addEventListener('submit', saveWorker);
+  $('#equipmentForm').addEventListener('submit', saveEquipmentTransaction);
+  $('#equipmentAction').addEventListener('change', updateEquipmentAvailability);
+  $('#equipmentSite').addEventListener('change', updateEquipmentAvailability);
+  $('#equipmentCategory').addEventListener('change', updateEquipmentAvailability);
+  $('#equipmentType').addEventListener('input', updateEquipmentAvailability);
+  $('#claimForm').addEventListener('submit', saveClaim);
   $('#itemForm').addEventListener('submit', saveItem);
   $('#importFile').addEventListener('change', importBackup);
 
@@ -190,6 +206,7 @@ function renderAll() {
   const companyName = data.settings?.companyName || 'KG Stock & Delivery Order';
   $('#brandName').textContent = companyName;
   document.title = companyName;
+  renderSiteSummary();
   renderDashboard();
   renderCalendar();
   renderJobs();
@@ -197,6 +214,7 @@ function renderAll() {
   renderStock();
   renderPrices();
   renderManpower();
+  renderWorkers();
   renderMaster();
   renderSettings();
   switchView(currentView);
@@ -210,13 +228,123 @@ function activeItems() {
   return asArray(data.items).filter((row) => row.active !== false).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function activeWorkers() {
+  return asArray(data.workers).filter((row) => row.active !== false).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
 function siteOptions(selected = '', includeAll = false) {
-  const first = includeAll ? '<option value="">All sites</option>' : '<option value="">Choose location</option>';
-  return first + activeSites().map((site) => `<option value="${site.id}" ${site.id === selected ? 'selected' : ''}>${escapeHtml(site.name)}</option>`).join('');
+  const first = includeAll ? '<option value="">All addresses</option>' : '<option value="">Choose address</option>';
+  return first + activeSites().map((site) => {
+    const label = site.type === 'worksite' ? (site.address || site.name) : site.name;
+    const suffix = site.closed ? ' · CLOSED' : (site.type === 'warehouse' ? ' · Store' : '');
+    return `<option value="${site.id}" ${site.id === selected ? 'selected' : ''}>${escapeHtml(`${label}${suffix}`)}</option>`;
+  }).join('');
+}
+
+function worksiteOptions(selected = '', includeAll = false) {
+  const first = includeAll ? '<option value="">All addresses</option>' : '<option value="">Choose site address</option>';
+  return first + activeSites().filter((site) => site.type === 'worksite').map((site) => `<option value="${site.id}" ${site.id === selected ? 'selected' : ''}>${escapeHtml(`${site.address || site.name}${site.closed ? ' · CLOSED' : ''}`)}</option>`).join('');
 }
 
 function itemOptions(selected = '') {
   return '<option value="">Choose item</option>' + activeItems().map((item) => `<option value="${item.id}" ${item.id === selected ? 'selected' : ''}>${escapeHtml(item.sku ? `${item.sku} · ${item.name}` : item.name)}</option>`).join('');
+}
+
+function workerOptions(selected = '') {
+  return '<option value="">Type worker manually</option>' + activeWorkers().map((worker) => `<option value="${worker.id}" ${worker.id === selected ? 'selected' : ''}>${escapeHtml(`${worker.name} · ${worker.role || 'No role'}`)}</option>`).join('');
+}
+
+function claimStatusBadge(status = 'draft') {
+  const meta = {
+    draft: ['Draft', ''],
+    submitted: ['Submitted', 'warning'],
+    approved: ['Approved', 'info'],
+    paid: ['Paid', 'success'],
+    cancelled: ['Cancelled', 'danger'],
+  }[status] || [status, ''];
+  return `<span class="badge ${meta[1]}">${escapeHtml(meta[0])}</span>`;
+}
+
+function renderSiteSummary() {
+  const workSites = activeSites().filter((site) => site.type === 'worksite');
+  if (!workSites.some((site) => site.id === siteSummarySiteId)) siteSummarySiteId = workSites[0]?.id || '';
+  const site = data.sites?.[siteSummarySiteId];
+  if (!site) {
+    $('#siteSummaryView').innerHTML = `<div class="card">${emptyState('No worksite address yet', 'Open Sites & Items and add the first worksite address.')}</div>`;
+    return;
+  }
+
+  const summary = summarizeSite(data, site.id);
+  const currency = data.settings?.currency || 'SGD';
+  const outstanding = summary.equipment.filter((row) => row.outstanding > 0);
+  const ladderRows = outstanding.filter((row) => row.category === 'ladder');
+  const scaffoldRows = outstanding.filter((row) => row.category === 'scaffold');
+  const ladderTotal = ladderRows.reduce((sum, row) => sum + Number(row.outstanding || 0), 0);
+  const scaffoldTotal = scaffoldRows.reduce((sum, row) => sum + Number(row.outstanding || 0), 0);
+  const equipmentHistory = asArray(data.equipmentTransactions).filter((row) => row.siteId === site.id).sort(sortByDateDesc);
+  const siteJobs = asArray(data.jobs).filter((row) => row.siteId === site.id);
+  const activeJobsCount = siteJobs.filter((row) => row.status !== 'completed').length;
+
+  $('#siteSummaryView').innerHTML = `
+    <div class="toolbar address-toolbar">
+      <div class="address-selector">
+        <label>Main address<select id="siteSummarySite">${workSites.map((row) => `<option value="${row.id}" ${row.id === site.id ? 'selected' : ''}>${escapeHtml(`${row.address || row.name}${row.closed ? ' · CLOSED' : ''}`)}</option>`).join('')}</select></label>
+        <div><strong class="address-title">${escapeHtml(site.address || site.name)}</strong><p>${escapeHtml(site.name || '')}${site.pic ? ` · PIC: ${escapeHtml(site.pic)}` : ''}</p></div>
+      </div>
+      <div class="actions">
+        ${site.closed ? '<span class="badge danger">Site closed</span>' : '<span class="badge success">Site open</span>'}
+        <button class="button primary" data-action="site-new-do" data-site="${site.id}">+ DO</button>
+        <button class="button secondary" data-action="new-equipment" data-site="${site.id}" data-equipment-action="borrow">Borrow equipment</button>
+        <button class="button secondary" data-action="new-claim" data-site="${site.id}">Add claim</button>
+        <button class="button ${site.closed ? 'secondary' : 'danger'}" data-action="${site.closed ? 'reopen-site' : 'close-site'}" data-id="${site.id}">${site.closed ? 'Reopen site' : 'Close site'}</button>
+      </div>
+    </div>
+
+    <div class="cards site-cards">
+      ${metricCard('Delivery orders', number(summary.deliveryOrderCount, 0), `${activeJobsCount} active/paused work task${activeJobsCount === 1 ? '' : 's'}`)}
+      ${metricCard('Material issued', money(summary.materialCost, currency), `${summary.materials.length} material type${summary.materials.length === 1 ? '' : 's'}`)}
+      ${metricCard('Worker cost', money(summary.manpowerCost, currency), `${summary.manpower.length} individual worker record${summary.manpower.length === 1 ? '' : 's'}`)}
+      ${metricCard('Claims', money(summary.claimTotal, currency), `${money(summary.openClaimTotal, currency)} not paid`)}
+    </div>
+
+    <div class="section-grid site-overview-grid">
+      <div class="card">
+        <div class="section-heading"><div><h2>Materials used at this address</h2><p>DO quantity is material delivered. Consumed quantity comes from Stock Out entries.</p></div><span class="badge info">${money(summary.totalCost, currency)} material + worker cost</span></div>
+        ${summary.materials.length ? `<div class="table-wrap"><table><thead><tr><th>Material</th><th>DO quantity</th><th>Consumed</th><th>Current at site</th><th>DO cost</th></tr></thead><tbody>${summary.materials.map((row) => `<tr><td><strong>${escapeHtml(row.itemName)}</strong></td><td>${number(row.deliveredQuantity)} ${escapeHtml(row.unit)}</td><td>${number(row.consumedQuantity)} ${escapeHtml(row.unit)}</td><td>${number(row.currentBalance)} ${escapeHtml(row.unit)}</td><td class="strong">${money(row.cost, currency)}</td></tr>`).join('')}</tbody></table></div>` : emptyState('No material recorded', 'Create a delivery order to this address.')}
+      </div>
+
+      <div class="card">
+        <div class="section-heading"><div><h2>Equipment still at site</h2><p>Return part now and the balance remains outstanding.</p></div><button class="button secondary small" data-action="new-equipment" data-site="${site.id}" data-equipment-action="return">Return equipment</button></div>
+        <div class="equipment-totals"><div><span>Ladders</span><strong>${number(ladderTotal, 0)}</strong></div><div><span>Scaffolds</span><strong>${number(scaffoldTotal, 0)}</strong></div></div>
+        ${outstanding.length ? `<div class="list">${outstanding.map((row) => `<div class="list-row"><div><strong>${escapeHtml(row.category === 'ladder' ? 'Ladder' : 'Scaffold')} · ${escapeHtml(row.equipmentType)}</strong><p>Borrowed ${number(row.borrowed)} · Returned ${number(row.returned)}</p></div><div class="actions"><span class="badge warning">${number(row.outstanding)} left</span><button class="button secondary small" data-action="return-equipment" data-site="${site.id}" data-category="${escapeHtml(row.category)}" data-type="${escapeHtml(row.equipmentType)}">Return</button></div></div>`).join('')}</div>` : emptyState('Nothing outstanding', 'All ladders and scaffolds have been returned.')}
+      </div>
+    </div>
+
+    <div class="section-grid">
+      <div class="card">
+        <div class="section-heading"><div><h2>Site claims</h2><p>Create several claims before or after closing the site.</p></div><button class="button primary small" data-action="new-claim" data-site="${site.id}">+ Claim</button></div>
+        ${summary.claims.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Claim</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>${summary.claims.map((row) => `<tr><td>${escapeHtml(row.date)}</td><td><strong>${escapeHtml(row.claimNumber || 'No number')}</strong><p>${escapeHtml(row.notes || '')}</p></td><td class="strong">${money(row.amount, currency)}</td><td>${claimStatusBadge(row.status)}</td><td><div class="actions"><button class="button secondary small" data-action="edit-claim" data-id="${row.id}">Edit</button>${row.status !== 'paid' ? `<button class="button secondary small" data-action="pay-claim" data-id="${row.id}">Mark paid</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>` : emptyState('No site claim', 'Press Add claim when you are ready to claim this site.')}
+      </div>
+
+      <div class="card">
+        <div class="section-heading"><div><h2>Equipment movement history</h2><p>Every borrow and partial return is kept.</p></div></div>
+        ${equipmentHistory.length ? `<div class="list compact-list">${equipmentHistory.slice(0, 12).map((row) => `<div class="list-row"><div><strong>${escapeHtml(row.action === 'return' ? 'Returned' : 'Borrowed')} ${number(row.quantity)} ${escapeHtml(row.category)}</strong><p>${escapeHtml(row.equipmentType)} · ${escapeHtml(row.date)}${row.notes ? ` · ${escapeHtml(row.notes)}` : ''}</p></div><span class="badge ${row.action === 'return' ? 'success' : 'warning'}">${row.action === 'return' ? 'IN' : 'OUT'}</span></div>`).join('')}</div>` : emptyState('No equipment history', 'Borrow ladders or scaffolds to start the ledger.')}
+      </div>
+    </div>
+
+    <div class="section-grid">
+      <div class="card">
+        <div class="section-heading"><div><h2>Individual worker costs</h2><p>Each person can use a different role, pay type and rate.</p></div><button class="button primary small" data-action="site-manpower" data-site="${site.id}">+ Worker cost</button></div>
+        ${summary.manpower.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Worker</th><th>Role</th><th>Pay</th><th>Cost</th></tr></thead><tbody>${summary.manpower.slice(0, 15).map((row) => `<tr><td>${escapeHtml(row.date)}</td><td><strong>${escapeHtml(row.workerName || row.person || 'Unspecified')}</strong></td><td>${escapeHtml(row.role || '—')}</td><td>${number(row.units ?? 0)} ${escapeHtml(manpowerUnitLabel(row))}(s) × ${money(row.rate ?? row.ratePerHour, currency)}</td><td class="strong">${money(manpowerCost(row), currency)}</td></tr>`).join('')}</tbody></table></div>` : emptyState('No worker cost', 'Add each worker who worked at this address.')}
+      </div>
+
+      <div class="card">
+        <div class="section-heading"><div><h2>Delivery orders</h2><p>${summary.deliveryOrderCount} issued to this address.</p></div></div>
+        ${summary.deliveryOrders.length ? `<div class="list compact-list">${summary.deliveryOrders.slice(0, 12).map((row) => `<div class="list-row"><div><button class="link-button" data-action="print-do" data-id="${row.id}">${escapeHtml(row.doNumber)}</button><p>${escapeHtml(row.date)} · ${number(row.lines?.length || 0, 0)} items</p></div><strong>${money(row.materialCost, currency)}</strong></div>`).join('')}</div>` : emptyState('No delivery orders', 'Create a DO for material sent to this address.')}
+      </div>
+    </div>`;
+
+  $('#siteSummarySite').addEventListener('change', (event) => { siteSummarySiteId = event.target.value; renderSiteSummary(); });
 }
 
 function renderDashboard() {
@@ -600,11 +728,25 @@ function applyJobToManpower(jobId) {
   if (!job) return;
   $('#manpowerJob').value = jobId;
   $('#manpowerSite').value = job.siteId || '';
-  $('#manpowerRole').value = job.defaultManpower?.role || job.name || '';
-  $('#manpowerWorkers').value = job.defaultManpower?.workers ?? 1;
-  $('#manpowerHours').value = job.defaultManpower?.hoursPerWorker ?? 8;
-  $('#manpowerRate').value = job.defaultManpower?.ratePerHour ?? 0;
+  if (!$('#manpowerRole').value.trim()) $('#manpowerRole').value = job.defaultManpower?.role || job.name || '';
   $('#manpowerNotes').value = job.workNotes || '';
+  updateManpowerCalculation();
+}
+
+function applyWorkerToManpower() {
+  const worker = data.workers?.[$('#manpowerWorker').value];
+  if (!worker) return;
+  $('#manpowerPerson').value = worker.name || '';
+  $('#manpowerRole').value = worker.role || '';
+  $('#manpowerPayType').value = worker.payType || 'hourly';
+  $('#manpowerRate').value = Number(worker.rate || 0);
+  $('#manpowerUnits').value = worker.payType === 'daily' ? 1 : worker.payType === 'fixed' ? 1 : 8;
+  updateManpowerPayTypeUI();
+}
+
+function updateManpowerPayTypeUI() {
+  const payType = $('#manpowerPayType').value;
+  $('#manpowerUnitsLabel').textContent = payType === 'daily' ? 'Days worked' : payType === 'fixed' ? 'Number of fixed jobs' : 'Hours worked';
   updateManpowerCalculation();
 }
 
@@ -742,13 +884,26 @@ function renderManpower() {
   const total = rows.reduce((sum, row) => sum + manpowerCost(row), 0);
 
   $('#manpowerView').innerHTML = `
-    <div class="toolbar"><div><span class="badge info">Total recorded: ${money(total, currency)}</span></div><button class="button primary" data-action="new-manpower">+ Add manpower</button></div>
+    <div class="toolbar"><div><span class="badge info">Total recorded: ${money(total, currency)}</span></div><div class="actions"><button class="button secondary" data-view-link="workers">Manage workers</button><button class="button primary" data-action="new-manpower">+ Add worker cost</button></div></div>
     <div class="card">
-      <div class="section-heading"><div><h2>Manpower cost register</h2><p>Each line is linked to saved site work when selected.</p></div></div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Site work</th><th>Site</th><th>Trade / Work</th><th>Workers</th><th>Hours each</th><th>Rate/hour</th><th>Cost</th><th></th></tr></thead><tbody>${rows.map((row) => `
-        <tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(data.jobs?.[row.jobId]?.name || '—')}</td><td>${escapeHtml(labelForSite(data.sites, row.siteId))}</td><td>${escapeHtml(row.role)}</td><td>${number(row.workers, 0)}</td><td>${number(row.hoursPerWorker)}</td><td>${money(row.ratePerHour, currency)}</td><td class="strong">${money(manpowerCost(row), currency)}</td><td><button class="button danger small" data-action="delete-manpower" data-id="${row.id}">Delete</button></td></tr>
-      `).join('')}</tbody></table></div>` : emptyState('No manpower cost', 'Add the workers and hours used at each site.')}
+      <div class="section-heading"><div><h2>Individual worker cost register</h2><p>Every person can have a different role, pay type and rate.</p></div></div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Worker</th><th>Role</th><th>Address</th><th>Pay type</th><th>Units</th><th>Rate</th><th>Cost</th><th></th></tr></thead><tbody>${rows.map((row) => `
+        <tr><td>${escapeHtml(row.date)}</td><td><strong>${escapeHtml(row.workerName || row.person || (row.workers ? `${row.workers} workers` : 'Unspecified'))}</strong><p>${escapeHtml(data.jobs?.[row.jobId]?.name || '')}</p></td><td>${escapeHtml(row.role || '—')}</td><td>${escapeHtml(labelForSite(data.sites, row.siteId))}</td><td>${escapeHtml(row.payType || 'Legacy hourly')}</td><td>${row.payType ? `${number(row.units)} ${escapeHtml(manpowerUnitLabel(row))}(s)` : `${number(row.workers, 0)} × ${number(row.hoursPerWorker)} hours`}</td><td>${money(row.rate ?? row.ratePerHour, currency)}</td><td class="strong">${money(manpowerCost(row), currency)}</td><td><button class="button danger small" data-action="delete-manpower" data-id="${row.id}">Delete</button></td></tr>
+      `).join('')}</tbody></table></div>` : emptyState('No worker cost', 'Add each person, role, pay type and amount used at an address.')}
     </div>`;
+}
+
+function renderWorkers() {
+  const currency = data.settings?.currency || 'SGD';
+  const rows = asArray(data.workers)
+    .filter((row) => !workerSearch || [row.name, row.role, row.notes].join(' ').toLowerCase().includes(workerSearch.toLowerCase()))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  $('#workersView').innerHTML = `
+    <div class="toolbar"><div class="toolbar-group"><label>Find worker<input id="workerSearch" type="search" value="${escapeHtml(workerSearch)}" placeholder="Name or role"></label></div><button class="button primary" data-action="new-worker">+ Add worker</button></div>
+    <div class="card"><div class="section-heading"><div><h2>Workers and normal pay</h2><p>Select these saved workers when recording manpower at an address.</p></div><span class="badge info">${activeWorkers().length} active</span></div>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Worker</th><th>Role</th><th>Pay type</th><th>Normal rate</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((row) => `<tr><td><strong>${escapeHtml(row.name)}</strong><p>${escapeHtml(row.notes || '')}</p></td><td>${escapeHtml(row.role || '—')}</td><td>${escapeHtml(row.payType === 'daily' ? 'Per day' : row.payType === 'fixed' ? 'Fixed amount' : 'Per hour')}</td><td class="strong">${money(row.rate, currency)}</td><td>${row.active === false ? '<span class="badge danger">Inactive</span>' : '<span class="badge success">Active</span>'}</td><td><div class="actions"><button class="button secondary small" data-action="edit-worker" data-id="${row.id}">Edit</button><button class="button secondary small" data-action="toggle-worker" data-id="${row.id}">${row.active === false ? 'Activate' : 'Deactivate'}</button></div></td></tr>`).join('')}</tbody></table></div>` : emptyState('No workers saved', 'Add workers with their role and normal pay.')}
+    </div>`;
+  $('#workerSearch').addEventListener('change', (event) => { workerSearch = event.target.value.trim(); renderWorkers(); });
 }
 
 function renderMaster() {
@@ -782,7 +937,7 @@ function renderSettings() {
         </form>
       </div>
       <div class="card">
-        <div class="section-heading"><div><h2>Backup and restore</h2><p>Download sites, calendar work, items, prices, DOs, stock and manpower as JSON.</p></div></div>
+        <div class="section-heading"><div><h2>Backup and restore</h2><p>Download addresses, workers, equipment, claims, calendar work, items, prices, DOs and stock as JSON.</p></div></div>
         <div class="list">
           <div class="list-row"><div><strong>Export backup</strong><p>Keep a dated copy on your computer or cloud drive.</p></div><button class="button secondary" data-action="export-backup">Download</button></div>
           <div class="list-row"><div><strong>Restore backup</strong><p>Replaces the current database with a selected JSON backup.</p></div><button class="button secondary" data-action="import-backup">Choose file</button></div>
@@ -793,7 +948,7 @@ function renderSettings() {
   $('#settingsForm').addEventListener('submit', saveSettings);
 }
 
-function openDODialog(jobId = '') {
+function openDODialog(jobId = '', destinationSiteId = '') {
   if (!requireReady(['sites', 'items', 'prices'])) return;
   $('#doForm').reset();
   $('#doDate').value = todayISO();
@@ -801,7 +956,7 @@ function openDODialog(jobId = '') {
   $('#doToSite').innerHTML = siteOptions('', false);
   const warehouse = activeSites().find((site) => site.type === 'warehouse');
   if (warehouse) $('#doFromSite').value = warehouse.id;
-  const destination = activeSites().find((site) => site.type === 'worksite');
+  const destination = data.sites?.[destinationSiteId] || activeSites().find((site) => site.type === 'worksite' && !site.closed);
   if (destination) $('#doToSite').value = destination.id;
   refreshDOJobOptions(jobId);
   const firstItem = activeItems()[0];
@@ -1030,47 +1185,59 @@ async function savePrice(event) {
   }
 }
 
-function openManpowerDialog(jobId = '') {
+function openManpowerDialog(jobId = '', siteId = '') {
   if (!requireReady(['sites'])) return;
   $('#manpowerForm').reset();
   $('#manpowerDate').value = todayISO();
-  $('#manpowerJob').innerHTML = jobOptions(jobId);
-  $('#manpowerSite').innerHTML = siteOptions();
-  $('#manpowerWorkers').value = 1;
-  $('#manpowerHours').value = 8;
+  $('#manpowerJob').innerHTML = jobOptions(jobId, siteId);
+  $('#manpowerSite').innerHTML = worksiteOptions(siteId);
+  $('#manpowerWorker').innerHTML = workerOptions();
+  $('#manpowerPayType').value = 'hourly';
+  $('#manpowerUnits').value = 8;
   $('#manpowerRate').value = 0;
+  if (siteId) $('#manpowerSite').value = siteId;
   if (jobId) applyJobToManpower(jobId);
-  else updateManpowerCalculation();
+  updateManpowerPayTypeUI();
   $('#manpowerDialog').showModal();
 }
 
 function updateManpowerCalculation() {
   $('#manpowerCalculated').textContent = money(manpowerCost({
-    workers: $('#manpowerWorkers').value,
-    hoursPerWorker: $('#manpowerHours').value,
-    ratePerHour: $('#manpowerRate').value,
+    payType: $('#manpowerPayType').value,
+    units: $('#manpowerUnits').value,
+    rate: $('#manpowerRate').value,
   }), data.settings?.currency || 'SGD');
 }
 
 async function saveManpower(event) {
   event.preventDefault();
   try {
+    const payType = $('#manpowerPayType').value;
+    const units = Number($('#manpowerUnits').value);
+    const rate = Number($('#manpowerRate').value);
+    if (!$('#manpowerPerson').value.trim()) throw new Error('Enter the worker name.');
+    if (units <= 0) throw new Error('Enter hours, days or quantity above zero.');
     await store.save('manpower', uid('mp'), {
       jobId: $('#manpowerJob').value || '',
       date: $('#manpowerDate').value,
       siteId: $('#manpowerSite').value,
+      workerId: $('#manpowerWorker').value || '',
+      workerName: $('#manpowerPerson').value.trim(),
       role: $('#manpowerRole').value.trim(),
-      workers: Number($('#manpowerWorkers').value),
-      hoursPerWorker: Number($('#manpowerHours').value),
-      ratePerHour: Number($('#manpowerRate').value),
+      payType,
+      units,
+      rate,
+      workers: 1,
+      hoursPerWorker: payType === 'hourly' ? units : 0,
+      ratePerHour: rate,
       notes: $('#manpowerNotes').value.trim(),
       createdAt: new Date().toISOString(),
       createdBy: currentUserLabel(),
     });
     closeDialog('manpowerDialog');
-    showToast('Manpower cost saved.');
+    showToast('Individual worker cost saved.');
   } catch (error) {
-    showToast(error.message || 'Unable to save manpower.', true);
+    showToast(error.message || 'Unable to save worker cost.', true);
   }
 }
 
@@ -1095,6 +1262,222 @@ async function saveSite(event) {
     showToast('Location saved.');
   } catch (error) {
     showToast(error.message || 'Unable to save location.', true);
+  }
+}
+
+function openWorkerDialog(id = '') {
+  const worker = data.workers?.[id];
+  $('#workerForm').reset();
+  $('#workerId').value = id;
+  $('#workerDialogTitle').textContent = worker ? 'Edit Worker' : 'Add Worker';
+  $('#workerName').value = worker?.name || '';
+  $('#workerRole').value = worker?.role || '';
+  $('#workerPayType').value = worker?.payType || 'hourly';
+  $('#workerRate').value = Number(worker?.rate || 0);
+  $('#workerNotes').value = worker?.notes || '';
+  $('#workerDialog').showModal();
+}
+
+async function saveWorker(event) {
+  event.preventDefault();
+  try {
+    const id = $('#workerId').value || uid('worker');
+    const existing = data.workers?.[id];
+    await store.save('workers', id, {
+      ...(existing || {}),
+      name: $('#workerName').value.trim(),
+      role: $('#workerRole').value.trim(),
+      payType: $('#workerPayType').value,
+      rate: Number($('#workerRate').value),
+      notes: $('#workerNotes').value.trim(),
+      active: existing?.active !== false,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      createdBy: existing?.createdBy || currentUserLabel(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUserLabel(),
+    });
+    closeDialog('workerDialog');
+    showToast(existing ? 'Worker updated.' : 'Worker saved.');
+  } catch (error) {
+    showToast(error.message || 'Unable to save worker.', true);
+  }
+}
+
+async function toggleWorker(id) {
+  const worker = data.workers?.[id];
+  if (!worker) return;
+  try {
+    await store.save('workers', id, { ...worker, active: worker.active === false, updatedAt: new Date().toISOString(), updatedBy: currentUserLabel() });
+    showToast(worker.active === false ? 'Worker activated.' : 'Worker deactivated.');
+  } catch (error) {
+    showToast(error.message || 'Unable to update worker.', true);
+  }
+}
+
+function openEquipmentDialog(siteId = '', action = 'borrow', category = 'ladder', equipmentType = '') {
+  if (!requireReady(['sites'])) return;
+  $('#equipmentForm').reset();
+  $('#equipmentDate').value = todayISO();
+  $('#equipmentSite').innerHTML = worksiteOptions(siteId);
+  $('#equipmentSite').value = siteId || siteSummarySiteId || '';
+  $('#equipmentAction').value = action;
+  $('#equipmentCategory').value = category || 'ladder';
+  $('#equipmentType').value = equipmentType || '';
+  $('#equipmentQuantity').value = 1;
+  $('#equipmentDialogTitle').textContent = action === 'return' ? 'Return Equipment' : 'Borrow Equipment';
+  updateEquipmentAvailability();
+  $('#equipmentDialog').showModal();
+}
+
+function updateEquipmentAvailability() {
+  const notice = $('#equipmentAvailableNotice');
+  if (!notice) return;
+  const isReturn = $('#equipmentAction').value === 'return';
+  $('#equipmentDialogTitle').textContent = isReturn ? 'Return Equipment' : 'Borrow Equipment';
+  if (!isReturn) {
+    notice.classList.add('hidden');
+    return;
+  }
+  const siteId = $('#equipmentSite').value;
+  const category = $('#equipmentCategory').value;
+  const type = $('#equipmentType').value.trim().toLowerCase();
+  const row = equipmentOutstanding(data.equipmentTransactions, siteId)
+    .find((item) => item.category === category && item.equipmentType.toLowerCase() === type);
+  notice.classList.remove('hidden');
+  notice.textContent = row ? `${number(row.outstanding)} ${row.equipmentType} currently outstanding at this address. You may return part now and the rest later.` : 'No matching borrowed equipment is currently outstanding at this address.';
+}
+
+async function saveEquipmentTransaction(event) {
+  event.preventDefault();
+  try {
+    const action = $('#equipmentAction').value;
+    const siteId = $('#equipmentSite').value;
+    const category = $('#equipmentCategory').value;
+    const equipmentType = $('#equipmentType').value.trim();
+    const quantity = Number($('#equipmentQuantity').value);
+    if (!siteId) throw new Error('Choose a site address.');
+    if (!equipmentType) throw new Error('Enter the ladder or scaffold type.');
+    if (quantity <= 0) throw new Error('Quantity must be above zero.');
+    if (action === 'return') {
+      const row = equipmentOutstanding(data.equipmentTransactions, siteId)
+        .find((item) => item.category === category && item.equipmentType.toLowerCase() === equipmentType.toLowerCase());
+      const available = Number(row?.outstanding || 0);
+      if (quantity > available) throw new Error(`Only ${number(available)} ${equipmentType} is outstanding at this address.`);
+    }
+    await store.save('equipmentTransactions', uid('equipment'), {
+      date: $('#equipmentDate').value,
+      siteId,
+      action,
+      category,
+      equipmentType,
+      quantity,
+      notes: $('#equipmentNotes').value.trim(),
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserLabel(),
+    });
+    siteSummarySiteId = siteId;
+    closeDialog('equipmentDialog');
+    showToast(action === 'return' ? 'Equipment return saved. Remaining balance is still tracked.' : 'Equipment borrowed to site.');
+  } catch (error) {
+    showToast(error.message || 'Unable to save equipment movement.', true);
+  }
+}
+
+function openClaimDialog(siteId = '', id = '') {
+  const record = data.siteClaims?.[id];
+  $('#claimForm').reset();
+  $('#claimId').value = id;
+  $('#claimDialogTitle').textContent = record ? 'Edit Site Claim' : 'Add Site Claim';
+  $('#claimSite').innerHTML = worksiteOptions(record?.siteId || siteId || siteSummarySiteId);
+  $('#claimSite').value = record?.siteId || siteId || siteSummarySiteId || '';
+  $('#claimDate').value = record?.date || todayISO();
+  $('#claimNumber').value = record?.claimNumber || '';
+  $('#claimAmount').value = Number(record?.amount || 0);
+  $('#claimStatus').value = record?.status || 'draft';
+  $('#claimNotes').value = record?.notes || '';
+  $('#claimCloseSite').checked = false;
+  $('#claimDialog').showModal();
+}
+
+async function saveClaim(event) {
+  event.preventDefault();
+  try {
+    const id = $('#claimId').value || uid('claim');
+    const existing = data.siteClaims?.[id];
+    const siteId = $('#claimSite').value;
+    const amount = Number($('#claimAmount').value);
+    if (!siteId) throw new Error('Choose a site address.');
+    if (amount < 0) throw new Error('Claim amount cannot be negative.');
+    const timestamp = new Date().toISOString();
+    const updates = {
+      [`siteClaims/${id}`]: {
+        ...(existing || {}),
+        siteId,
+        date: $('#claimDate').value,
+        claimNumber: $('#claimNumber').value.trim(),
+        amount,
+        status: $('#claimStatus').value,
+        notes: $('#claimNotes').value.trim(),
+        createdAt: existing?.createdAt || timestamp,
+        createdBy: existing?.createdBy || currentUserLabel(),
+        updatedAt: timestamp,
+        updatedBy: currentUserLabel(),
+      },
+    };
+    if ($('#claimCloseSite').checked) addSiteCloseUpdates(updates, siteId, true);
+    await store.updateMany(updates);
+    siteSummarySiteId = siteId;
+    closeDialog('claimDialog');
+    showToast($('#claimCloseSite').checked ? 'Claim saved and site closed.' : 'Site claim saved.');
+  } catch (error) {
+    showToast(error.message || 'Unable to save claim.', true);
+  }
+}
+
+async function payClaim(id) {
+  const record = data.siteClaims?.[id];
+  if (!record) return;
+  try {
+    await store.save('siteClaims', id, { ...record, status: 'paid', paidAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: currentUserLabel() });
+    showToast('Claim marked paid.');
+  } catch (error) {
+    showToast(error.message || 'Unable to update claim.', true);
+  }
+}
+
+function addSiteCloseUpdates(updates, siteId, closed) {
+  const site = data.sites?.[siteId];
+  if (!site) return;
+  const timestamp = new Date().toISOString();
+  updates[`sites/${siteId}`] = {
+    ...site,
+    closed,
+    closedAt: closed ? timestamp : '',
+    closedBy: closed ? currentUserLabel() : '',
+    updatedAt: timestamp,
+    updatedBy: currentUserLabel(),
+  };
+  if (closed) {
+    asArray(data.jobs).filter((job) => job.siteId === siteId && job.status !== 'completed').forEach((job) => {
+      updates[`jobs/${job.id}`] = { ...job, status: 'completed', updatedAt: timestamp, updatedBy: currentUserLabel() };
+    });
+  }
+}
+
+async function changeSiteClosed(siteId, closed) {
+  const site = data.sites?.[siteId];
+  if (!site) return;
+  const outstanding = equipmentOutstanding(data.equipmentTransactions, siteId).filter((row) => row.outstanding > 0);
+  const warning = closed && outstanding.length ? `\n\nThere is still equipment outstanding. You can return it later after closing.` : '';
+  if (!confirm(`${closed ? 'Close' : 'Reopen'} ${site.address || site.name}?${warning}`)) return;
+  try {
+    const updates = {};
+    addSiteCloseUpdates(updates, siteId, closed);
+    await store.updateMany(updates);
+    siteSummarySiteId = siteId;
+    showToast(closed ? 'Site closed. Equipment and claims remain editable.' : 'Site reopened.');
+  } catch (error) {
+    showToast(error.message || 'Unable to change site status.', true);
   }
 }
 
@@ -1155,6 +1538,18 @@ function handleDynamicClick(event) {
     'new-stock': openStockDialog,
     'new-price': openPriceDialog,
     'new-manpower': () => openManpowerDialog(),
+    'site-manpower': () => openManpowerDialog('', button.dataset.site || siteSummarySiteId),
+    'new-worker': () => openWorkerDialog(),
+    'edit-worker': () => openWorkerDialog(id),
+    'toggle-worker': () => toggleWorker(id),
+    'new-equipment': () => openEquipmentDialog(button.dataset.site || siteSummarySiteId, button.dataset.equipmentAction || 'borrow'),
+    'return-equipment': () => openEquipmentDialog(button.dataset.site || siteSummarySiteId, 'return', button.dataset.category || 'ladder', button.dataset.type || ''),
+    'new-claim': () => openClaimDialog(button.dataset.site || siteSummarySiteId),
+    'edit-claim': () => openClaimDialog('', id),
+    'pay-claim': () => payClaim(id),
+    'close-site': () => changeSiteClosed(id, true),
+    'reopen-site': () => changeSiteClosed(id, false),
+    'site-new-do': () => openDODialog('', button.dataset.site || siteSummarySiteId),
     'new-job': () => openJobDialog(),
     'new-calendar-job': () => openJobDialog('', '', button.dataset.date || calendarSelectedDate),
     'edit-calendar-job': () => openJobDialog(id),

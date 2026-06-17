@@ -78,11 +78,22 @@ export function calculateDOLines(lines = []) {
 }
 
 export function manpowerCost(entry = {}) {
+  if (entry.payType) {
+    const units = Number(entry.units ?? entry.hours ?? entry.days ?? 1);
+    const rate = Number(entry.rate ?? entry.ratePerHour ?? 0);
+    return roundMoney(Math.max(0, units) * Math.max(0, rate));
+  }
   return roundMoney(
     Number(entry.workers || 0) *
       Number(entry.hoursPerWorker || 0) *
       Number(entry.ratePerHour || 0),
   );
+}
+
+export function manpowerUnitLabel(entry = {}) {
+  if (entry.payType === 'daily') return 'day';
+  if (entry.payType === 'fixed') return 'job';
+  return 'hour';
 }
 
 export function generateDONumber(existingDOsRecord, date, prefix = 'DO') {
@@ -174,7 +185,111 @@ export function escapeHtml(value) {
 }
 
 export function labelForSite(sitesRecord, id) {
-  return sitesRecord?.[id]?.name || 'Unknown location';
+  const site = sitesRecord?.[id];
+  if (!site) return 'Unknown location';
+  if (site.type === 'worksite') return site.address || site.name || 'Unknown work site';
+  return site.name || site.address || 'Unknown location';
+}
+
+export function equipmentOutstanding(transactionsRecord = {}, siteId = '') {
+  const rows = {};
+  asArray(transactionsRecord)
+    .filter((row) => !siteId || row.siteId === siteId)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .forEach((row) => {
+      const category = String(row.category || 'equipment').trim().toLowerCase();
+      const equipmentType = String(row.equipmentType || row.typeName || 'General').trim();
+      const key = `${category}::${equipmentType.toLowerCase()}`;
+      rows[key] ||= {
+        key,
+        category,
+        equipmentType,
+        borrowed: 0,
+        returned: 0,
+        outstanding: 0,
+      };
+      const quantity = Number(row.quantity || 0);
+      if (row.action === 'return') rows[key].returned = roundQuantity(rows[key].returned + quantity);
+      else rows[key].borrowed = roundQuantity(rows[key].borrowed + quantity);
+      rows[key].outstanding = roundQuantity(rows[key].borrowed - rows[key].returned);
+    });
+  return Object.values(rows).filter((row) => row.borrowed || row.returned || row.outstanding);
+}
+
+export function summarizeSite(data = {}, siteId = '') {
+  const deliveryOrders = asArray(data.deliveryOrders)
+    .filter((row) => row.status !== 'cancelled' && row.toSiteId === siteId)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const manpower = asArray(data.manpower)
+    .filter((row) => row.siteId === siteId)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const claims = asArray(data.siteClaims)
+    .filter((row) => row.siteId === siteId && row.status !== 'cancelled')
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const materialMap = {};
+  deliveryOrders.forEach((record) => {
+    (record.lines || []).forEach((line) => {
+      const key = line.itemId || line.itemName;
+      materialMap[key] ||= {
+        itemId: line.itemId || '',
+        itemName: line.itemName || 'Unknown item',
+        unit: line.unit || '',
+        deliveredQuantity: 0,
+        consumedQuantity: 0,
+        currentBalance: 0,
+        cost: 0,
+      };
+      materialMap[key].deliveredQuantity = roundQuantity(materialMap[key].deliveredQuantity + Number(line.quantity || 0));
+      materialMap[key].cost = roundMoney(materialMap[key].cost + Number(line.lineCost ?? (Number(line.quantity || 0) * Number(line.unitPrice || 0))));
+    });
+  });
+  asArray(data.stockTransactions)
+    .filter((row) => row.type === 'stock_out' && row.fromSiteId === siteId)
+    .forEach((row) => {
+      const item = data.items?.[row.itemId] || {};
+      materialMap[row.itemId] ||= {
+        itemId: row.itemId,
+        itemName: item.name || 'Unknown item',
+        unit: item.unit || '',
+        deliveredQuantity: 0,
+        consumedQuantity: 0,
+        currentBalance: 0,
+        cost: 0,
+      };
+      materialMap[row.itemId].consumedQuantity = roundQuantity(materialMap[row.itemId].consumedQuantity + Number(row.quantity || 0));
+    });
+  const balances = calculateStockBalances(data.stockTransactions || {});
+  Object.entries(balances?.[siteId] || {}).forEach(([itemId, quantity]) => {
+    const item = data.items?.[itemId] || {};
+    materialMap[itemId] ||= {
+      itemId,
+      itemName: item.name || 'Unknown item',
+      unit: item.unit || '',
+      deliveredQuantity: 0,
+      consumedQuantity: 0,
+      currentBalance: 0,
+      cost: 0,
+    };
+    materialMap[itemId].currentBalance = roundQuantity(quantity);
+  });
+  const materialCost = roundMoney(deliveryOrders.reduce((sum, row) => sum + Number(row.materialCost || 0), 0));
+  const labourCost = roundMoney(manpower.reduce((sum, row) => sum + manpowerCost(row), 0));
+  const claimTotal = roundMoney(claims.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  const paidClaimTotal = roundMoney(claims.filter((row) => row.status === 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  return {
+    deliveryOrders,
+    deliveryOrderCount: deliveryOrders.length,
+    manpower,
+    claims,
+    materials: Object.values(materialMap).sort((a, b) => a.itemName.localeCompare(b.itemName)),
+    equipment: equipmentOutstanding(data.equipmentTransactions || {}, siteId),
+    materialCost,
+    manpowerCost: labourCost,
+    totalCost: roundMoney(materialCost + labourCost),
+    claimTotal,
+    paidClaimTotal,
+    openClaimTotal: roundMoney(claimTotal - paidClaimTotal),
+  };
 }
 
 export function labelForItem(itemsRecord, id) {

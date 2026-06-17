@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#155eef" />
-  <meta name="description" content="Supabase-powered multi-site stock, editable work calendar, delivery orders, historical pricing, manpower and material costing." />
-  <title>KG Stock & Internal Calendar — Supabase</title>
+  <meta name="description" content="Supabase-powered site cost, delivery orders, worker pay, ladders, scaffolds, claims and editable work calendar." />
+  <title>KG Site Cost & Equipment — Supabase</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
@@ -24,13 +24,15 @@
       </div>
 
       <nav class="nav" aria-label="Main navigation">
-        <button class="nav-button active" data-view="dashboard"><span>▦</span> Dashboard</button>
+        <button class="nav-button active" data-view="siteSummary"><span>⌂</span> Address Summary</button>
+        <button class="nav-button" data-view="dashboard"><span>▦</span> Dashboard</button>
         <button class="nav-button" data-view="calendar"><span>▦</span> Calendar</button>
         <button class="nav-button" data-view="jobs"><span>▶</span> Site Work</button>
         <button class="nav-button" data-view="deliveryOrders"><span>▤</span> Delivery Orders</button>
         <button class="nav-button" data-view="stock"><span>▣</span> Stock</button>
         <button class="nav-button" data-view="prices"><span>$</span> Price History</button>
         <button class="nav-button" data-view="manpower"><span>👷</span> Manpower</button>
+        <button class="nav-button" data-view="workers"><span>♟</span> Workers</button>
         <button class="nav-button" data-view="master"><span>⚙</span> Sites & Items</button>
         <button class="nav-button" data-view="settings"><span>↧</span> Settings & Backup</button>
       </nav>
@@ -54,13 +56,15 @@
         </div>
       </header>
 
-      <section id="dashboardView" class="view active"></section>
+      <section id="siteSummaryView" class="view active"></section>
+      <section id="dashboardView" class="view"></section>
       <section id="calendarView" class="view"></section>
       <section id="jobsView" class="view"></section>
       <section id="deliveryOrdersView" class="view"></section>
       <section id="stockView" class="view"></section>
       <section id="pricesView" class="view"></section>
       <section id="manpowerView" class="view"></section>
+      <section id="workersView" class="view"></section>
       <section id="masterView" class="view"></section>
       <section id="settingsView" class="view"></section>
     </main>
@@ -145,6 +149,7 @@
       </div>
       <div class="form-grid two">
         <label>Item<select id="priceItem" name="itemId" required></select></label>
+        <label>Worksite price<select id="priceSite" name="siteId"><option value="">All sites / default price</option></select></label>
         <label>Effective from<input id="priceDate" name="effectiveDate" type="date" required /></label>
         <label>Unit price<input id="unitPrice" name="unitPrice" type="number" min="0" step="0.01" required /></label>
         <label>Supplier<input id="priceSupplier" name="supplier" placeholder="Optional" /></label>
@@ -160,27 +165,77 @@
   <dialog id="manpowerDialog" class="modal">
     <form id="manpowerForm" method="dialog">
       <div class="modal-header">
-        <div><h2>Add Manpower Cost</h2><p>Cost = workers × hours per worker × hourly rate.</p></div>
+        <div><h2>Add Worker Cost</h2><p>Select a saved worker or type a person manually. Each person can have a different role and pay.</p></div>
         <button type="button" class="icon-button" data-close="manpowerDialog">×</button>
       </div>
       <div class="form-grid two">
         <label class="span-2">Saved site work<select id="manpowerJob" name="jobId"><option value="">No saved work selected</option></select></label>
         <label>Date<input id="manpowerDate" name="date" type="date" required /></label>
-        <label>Work site<select id="manpowerSite" name="siteId" required></select></label>
-        <label>Trade / Description<input id="manpowerRole" name="role" placeholder="e.g. Installer" required /></label>
-        <label>No. of workers<input id="manpowerWorkers" name="workers" type="number" min="0" step="1" required /></label>
-        <label>Hours per worker<input id="manpowerHours" name="hoursPerWorker" type="number" min="0" step="0.25" required /></label>
-        <label>Rate per hour<input id="manpowerRate" name="ratePerHour" type="number" min="0" step="0.01" required /></label>
+        <label>Work site / Address<select id="manpowerSite" name="siteId" required></select></label>
+        <label class="span-2">Saved worker<select id="manpowerWorker" name="workerId"><option value="">Type worker manually</option></select></label>
+        <label>Worker name<input id="manpowerPerson" name="workerName" placeholder="e.g. Ah Wei" required /></label>
+        <label>Role / Trade<input id="manpowerRole" name="role" placeholder="e.g. Installer" required /></label>
+        <label>Pay type<select id="manpowerPayType" name="payType"><option value="hourly">Per hour</option><option value="daily">Per day</option><option value="fixed">Fixed amount</option></select></label>
+        <label><span id="manpowerUnitsLabel">Hours worked</span><input id="manpowerUnits" name="units" type="number" min="0" step="0.25" required /></label>
+        <label>Pay rate<input id="manpowerRate" name="rate" type="number" min="0" step="0.01" required /></label>
         <label class="span-2">Notes<input id="manpowerNotes" name="notes" placeholder="Optional" /></label>
       </div>
-      <div class="calculation-box">Calculated manpower cost: <strong id="manpowerCalculated">$0.00</strong></div>
+      <div class="calculation-box">Calculated worker cost: <strong id="manpowerCalculated">$0.00</strong></div>
       <div class="modal-actions">
         <button type="button" class="button secondary" data-close="manpowerDialog">Cancel</button>
-        <button type="submit" class="button primary">Save manpower</button>
+        <button type="submit" class="button primary">Save worker cost</button>
       </div>
     </form>
   </dialog>
 
+  <dialog id="workerDialog" class="modal small">
+    <form id="workerForm" method="dialog">
+      <input id="workerId" type="hidden" />
+      <div class="modal-header"><div><h2 id="workerDialogTitle">Add Worker</h2><p>Save each person’s normal role and pay.</p></div><button type="button" class="icon-button" data-close="workerDialog">×</button></div>
+      <div class="form-grid two">
+        <label>Worker name<input id="workerName" required /></label>
+        <label>Role / Trade<input id="workerRole" required /></label>
+        <label>Pay type<select id="workerPayType"><option value="hourly">Per hour</option><option value="daily">Per day</option><option value="fixed">Fixed amount</option></select></label>
+        <label>Normal pay rate<input id="workerRate" type="number" min="0" step="0.01" required /></label>
+        <label class="span-2">Phone / Notes<input id="workerNotes" /></label>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="workerDialog">Cancel</button><button type="submit" class="button primary">Save worker</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="equipmentDialog" class="modal small">
+    <form id="equipmentForm" method="dialog">
+      <div class="modal-header"><div><h2 id="equipmentDialogTitle">Borrow Equipment</h2><p>Record ladders and scaffolds borrowed or partly returned.</p></div><button type="button" class="icon-button" data-close="equipmentDialog">×</button></div>
+      <div class="form-grid two">
+        <label>Date<input id="equipmentDate" type="date" required /></label>
+        <label>Action<select id="equipmentAction"><option value="borrow">Borrow to site</option><option value="return">Return from site</option></select></label>
+        <label class="span-2">Site address<select id="equipmentSite" required></select></label>
+        <label>Equipment<select id="equipmentCategory"><option value="ladder">Ladder</option><option value="scaffold">Scaffold</option></select></label>
+        <label>Type / Size<input id="equipmentType" placeholder="e.g. A-frame 8ft" required /></label>
+        <label>Quantity<input id="equipmentQuantity" type="number" min="0.001" step="0.001" required /></label>
+        <label class="span-2">Notes<input id="equipmentNotes" placeholder="Person, vehicle or condition" /></label>
+      </div>
+      <div id="equipmentAvailableNotice" class="notice hidden"></div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="equipmentDialog">Cancel</button><button type="submit" class="button primary">Save equipment movement</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="claimDialog" class="modal small">
+    <form id="claimForm" method="dialog">
+      <input id="claimId" type="hidden" />
+      <div class="modal-header"><div><h2 id="claimDialogTitle">Add Site Claim</h2><p>Track claim value and optionally close the site after saving.</p></div><button type="button" class="icon-button" data-close="claimDialog">×</button></div>
+      <div class="form-grid two">
+        <label class="span-2">Site address<select id="claimSite" required></select></label>
+        <label>Claim date<input id="claimDate" type="date" required /></label>
+        <label>Claim number<input id="claimNumber" placeholder="Optional" /></label>
+        <label>Amount<input id="claimAmount" type="number" min="0" step="0.01" required /></label>
+        <label>Status<select id="claimStatus"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="paid">Paid</option></select></label>
+        <label class="span-2">Notes<input id="claimNotes" /></label>
+        <label class="span-2 checkbox-row"><input id="claimCloseSite" type="checkbox" /> Close this site after saving the claim</label>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close="claimDialog">Cancel</button><button type="submit" class="button primary">Save claim</button></div>
+    </form>
+  </dialog>
 
   <dialog id="jobDialog" class="modal modal-wide">
     <form id="jobForm" method="dialog">

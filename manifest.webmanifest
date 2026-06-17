@@ -1,6 +1,6 @@
 {
-  "name": "KG Stock, Internal Calendar & Delivery Order",
-  "short_name": "KG Stock",
+  "name": "KG Site Control, Internal Calendar & Delivery Order",
+  "short_name": "KG Site Control",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f5f7fb",

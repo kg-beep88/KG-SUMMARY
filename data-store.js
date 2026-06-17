@@ -11,6 +11,9 @@ const EMPTY_DATA = {
   manpower: {},
   jobs: {},
   jobActivities: {},
+  workers: {},
+  equipmentTransactions: {},
+  siteClaims: {},
 };
 
 function clone(value) {
@@ -32,6 +35,9 @@ function normalizeData(value) {
     manpower: value?.manpower || {},
     jobs: value?.jobs || {},
     jobActivities: value?.jobActivities || {},
+    workers: value?.workers || {},
+    equipmentTransactions: value?.equipmentTransactions || {},
+    siteClaims: value?.siteClaims || {},
   };
 }
 

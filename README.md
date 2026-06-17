@@ -1,26 +1,49 @@
-# KG Stock & Internal Calendar — Supabase V2
+# KG Site Control — Supabase V3
 
-This version uses only:
+This version uses:
 
 - GitHub Pages for the website
-- Supabase for login, shared records and live updates
-- An internal editable month calendar built into the website
+- Supabase for approved-user login and live shared data
+- An internal editable calendar stored in Supabase
 
-It does **not** use Google Calendar, Google Calendar API, service-account JSON keys, Supabase Edge Functions or Cron.
+It does not use Google Calendar, Edge Functions, service-account keys or Cron.
 
-## Main functions
+## Main address page
 
-- Click a date to create site work
-- Click a calendar task to edit it
-- Multi-day work appears on every date
-- Pause, resume, complete or continue the same work
-- Reuse the same material list for the same worksite
-- Delivery Orders, stock, site-specific dated prices and manpower costing
-- Shared Supabase data for the six approved users
-- JSON backup and restore
+The default page is **Address Summary**. Select an address to see:
 
-## Existing Supabase user
+- Number of Delivery Orders
+- Material quantities and historical DO cost
+- Material marked consumed and current site balance
+- Individual worker roles, pay types, rates and total cost
+- Ladder count by type
+- Scaffold count by type
+- Partial equipment returns and remaining outstanding quantity
+- Site claims and claim status
+- Site open/closed status
 
-Upload the files from `SAFE-UPGRADE` to GitHub but keep your existing `supabase-config.js`. Your current sites, stock, prices, DOs, manpower and site work remain in Supabase.
+## Important existing-project upgrade
 
-The old deployed Google Calendar Edge Function can remain; this website never calls it. You may delete it later from Supabase Dashboard > Edge Functions.
+Before uploading the website, run this once in Supabase SQL Editor:
+
+`RUN-THIS-IN-SUPABASE-FIRST.sql`
+
+It allows the existing `app_records` table to store the new collections:
+
+- `workers`
+- `equipmentTransactions`
+- `siteClaims`
+
+Then upload the Safe Upgrade files to GitHub and keep your existing `supabase-config.js`.
+
+## Worker pay
+
+Create workers under **Workers** and save each person’s normal role, pay type and rate. Manpower entries can be hourly, daily or fixed and may override the normal saved value.
+
+## Equipment
+
+Borrow equipment to an address, then return any quantity. For example, borrow 10 ladders, return 4 now and return 6 later. The address summary always shows the remaining balance.
+
+## Claims and closing
+
+Add one or more claims. A claim can be Draft, Submitted, Approved or Paid. Select **Close this site after saving the claim** to save the claim and close the site in one action. Closing does not remove history and equipment can still be returned later.

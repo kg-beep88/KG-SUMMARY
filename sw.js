@@ -1,4 +1,4 @@
-const CACHE = 'kg-stock-internal-calendar-supabase-v2';
+const CACHE = 'kg-site-control-v3';
 const APP_SHELL = [
   './',
   './index.html',

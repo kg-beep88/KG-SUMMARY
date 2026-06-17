@@ -1,0 +1,4 @@
+KG Site Control v3
+Build date: 2026-06-17
+Storage: Supabase
+Calendar: Internal Supabase calendar only

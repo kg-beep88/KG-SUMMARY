@@ -1,4 +1,4 @@
-// KG Stock & Calendar — Supabase browser configuration
+// KG Stock & Internal Calendar — Supabase browser configuration
 // Copy your values from Supabase Dashboard > Project Settings > API.
 // This file is safe to use in a browser. NEVER put the service_role key here.
 
@@ -18,5 +18,4 @@ export const appAccess = {
     'amyszemee@gmail.com',
   ],
   recordsTable: 'app_records',
-  calendarFunctionName: 'sync-google-calendar',
 };
