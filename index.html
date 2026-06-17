@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#155eef" />
-  <meta name="description" content="Simple Supabase worksite calendar with delivery, stock return and equipment tracking." />
-  <title>KG Simple Site Calendar</title>
+  <meta name="description" content="Supabase worksite calendar with one-shift manpower costing, delivery, stock return and equipment tracking." />
+  <title>KG Shift Site Calendar</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
@@ -48,25 +48,18 @@
     </main>
   </div>
 
-  <dialog id="entryDialog" class="modal">
+  <dialog id="entryDialog" class="modal modal-wide">
     <form id="entryForm" method="dialog">
       <input id="entryId" type="hidden" />
       <div class="modal-header">
-        <div><h2 id="entryDialogTitle">Add Site Entry</h2><p>Simple calendar information only.</p></div>
+        <div><h2 id="entryDialogTitle">Add Site Work</h2><p>Choose the address. Every person added below counts as one paid shift for each selected date.</p></div>
         <button type="button" class="icon-button" data-close="entryDialog">×</button>
       </div>
+
       <div class="form-grid two">
         <label class="span-2">Address<select id="entrySite" required></select></label>
         <label>Start date<input id="entryStartDate" type="date" required /></label>
         <label>End date<input id="entryEndDate" type="date" required /></label>
-        <label>Who is going?
-          <select id="entryPeopleType" required>
-            <option value="worker">Worker</option>
-            <option value="foreman">Foreman</option>
-            <option value="subcon">Subcon</option>
-            <option value="all">All</option>
-          </select>
-        </label>
         <label>Site status
           <select id="entryStatus" required>
             <option value="active">Active</option>
@@ -81,17 +74,36 @@
             <option value="cannot_work">Work cannot be done</option>
           </select>
         </label>
-        <label>Names / company<input id="entryPeopleNotes" placeholder="Optional worker, foreman or subcon names" /></label>
         <label id="cannotWorkReasonLabel" class="span-2 hidden">Why work cannot be done?<input id="entryCannotWorkReason" placeholder="e.g. Area not ready, no access, wet floor" /></label>
-        <label class="span-2">Simple work note<input id="entryNotes" placeholder="e.g. Bedroom ceiling, touch-up, waiting for client" /></label>
+        <label class="span-2">Simple note<input id="entryNotes" placeholder="Optional site note" /></label>
       </div>
 
       <div class="subsection">
-        <div class="section-heading compact"><div><h3>Equipment needed</h3><p>Record what this site needs. Actual borrow and return are recorded separately.</p></div></div>
+        <div class="section-heading compact">
+          <div><h3>Manpower — one person = one shift per day</h3><p>No hours. Type the person, role and pay for one shift.</p></div>
+          <div class="actions shift-actions">
+            <button type="button" class="button secondary small" data-add-shift="worker">+ Worker</button>
+            <button type="button" class="button secondary small" data-add-shift="foreman">+ Foreman</button>
+            <button type="button" class="button secondary small" data-add-shift="subcon">+ Subcon</button>
+            <button type="button" class="button primary small" data-add-shift="all">+ All</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="shift-table">
+            <thead><tr><th>Type</th><th>Name / Company</th><th>Role</th><th>Pay for 1 shift</th><th></th></tr></thead>
+            <tbody id="entryShiftRowsBody"></tbody>
+            <tfoot><tr><td colspan="3" class="align-right"><strong>Manpower per day</strong></td><td><strong id="entryDailyManpowerTotal">$0.00</strong></td><td></td></tr></tfoot>
+          </table>
+        </div>
+        <div id="entryNoShifts" class="notice">No manpower added. Use Worker, Foreman, Subcon or All above.</div>
+      </div>
+
+      <div class="subsection">
+        <div class="section-heading compact"><div><h3>Equipment needed</h3><p>Actual borrow and return are recorded separately.</p></div></div>
         <div class="form-grid two">
           <label>Ladder type<input id="entryLadderType" placeholder="e.g. A-frame 8ft" /></label>
           <label>Ladder quantity<input id="entryLadderQty" type="number" min="0" step="1" value="0" /></label>
-          <label>Scaffold type<input id="entryScaffoldType" placeholder="e.g. 1 set mobile" /></label>
+          <label>Scaffold type<input id="entryScaffoldType" placeholder="e.g. Mobile scaffold" /></label>
           <label>Scaffold quantity<input id="entryScaffoldQty" type="number" min="0" step="1" value="0" /></label>
           <label class="span-2">Other equipment needed<input id="entryOtherEquipment" placeholder="e.g. Platform, extension cable, trolley" /></label>
         </div>
@@ -101,7 +113,7 @@
         <button id="deleteEntryButton" type="button" class="button danger hidden">Delete</button>
         <span class="spacer"></span>
         <button type="button" class="button secondary" data-close="entryDialog">Cancel</button>
-        <button type="submit" class="button primary">Save entry</button>
+        <button type="submit" class="button primary">Save site work</button>
       </div>
     </form>
   </dialog>
@@ -112,12 +124,11 @@
         <div><h2>Delivery to Site</h2><p>Create a Delivery Order and save material cost for the selected address.</p></div>
         <button type="button" class="icon-button" data-close="doDialog">×</button>
       </div>
-      <div class="form-grid three">
+      <div class="form-grid two">
         <label>Date<input id="doDate" type="date" required /></label>
-        <label>From location<select id="doFromSite" required></select></label>
         <label>Deliver to address<select id="doToSite" required></select></label>
         <label>Reference / vehicle<input id="doReference" placeholder="Optional" /></label>
-        <label class="span-2">Remarks<input id="doNotes" placeholder="Optional" /></label>
+        <label>Remarks<input id="doNotes" placeholder="Optional" /></label>
       </div>
       <div class="section-heading compact">
         <div><h3>Materials</h3><p>Unit price is suggested from the latest site price, but you may type a different price.</p></div>

@@ -68,3 +68,16 @@ export function jobOccursOnDate(job = {}, dateISO = '') {
   const end = job.endDate || start;
   return Boolean(start && dateISO && start <= dateISO && dateISO <= end);
 }
+
+export function datesInRange(startISO = '', endISO = '') {
+  const start = dateFromISO(startISO);
+  const end = dateFromISO(endISO || startISO);
+  if (!start || !end || end < start) return [];
+  const rows = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    rows.push(isoFromDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return rows;
+}

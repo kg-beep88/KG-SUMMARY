@@ -1,11 +1,11 @@
 {
-  "name": "KG Simple Site Calendar",
+  "name": "KG Shift Site Calendar",
   "short_name": "KG Calendar",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f3f6fb",
   "theme_color": "#155eef",
-  "description": "Simple worksite calendar with Supabase data, deliveries, stock returns and equipment tracking.",
+  "description": "Address-first Supabase worksite calendar with one-shift manpower costing, deliveries, stock returns and equipment tracking.",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

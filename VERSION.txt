@@ -1,4 +1,5 @@
-KG Stock Supabase Simple Calendar v4
+KG Stock Supabase Address Shift Calendar v5.1
 Built: 2026-06-17
-Google Calendar: removed
-Main view: internal editable calendar
+Main view: address-first editable calendar
+Manpower: one person = one paid shift per calendar day
+Delivery: direct to address, no source-location selection

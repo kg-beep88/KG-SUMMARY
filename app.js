@@ -8,14 +8,16 @@ import {
   labelForSite,
   money,
   number,
+  manpowerCost,
+  roundMoney,
   resolvePrice,
   todayISO,
   equipmentOutstanding,
 } from './core.js';
-import { dateLabel, jobOccursOnDate, monthGridDates, monthTitle, shiftMonth } from './calendar-core.js';
+import { dateLabel, datesInRange, jobOccursOnDate, monthGridDates, monthTitle, shiftMonth } from './calendar-core.js';
 
 const VIEW_META = {
-  calendar: ['Calendar', 'Choose an address and record only the important site information.'],
+  calendar: ['Calendar', 'Address first, one shift per person, with material and manpower totals.'],
   master: ['Addresses & Items', 'Maintain worksite addresses, store locations and materials.'],
   settings: ['Settings & Backup', 'Company name, currency and full Supabase data backup.'],
 };
@@ -43,6 +45,7 @@ let calendarSelectedDate = todayISO();
 let calendarSiteFilter = '';
 let calendarStatusFilter = 'all';
 let doDraftLines = [];
+let entryShiftRows = [];
 let toastTimer;
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -100,6 +103,10 @@ function bindStaticEvents() {
   $('#entryForm').addEventListener('submit', saveEntry);
   $('#entryOutcome').addEventListener('change', updateOutcomeVisibility);
   $('#entrySite').addEventListener('change', applySiteStatusToEntry);
+  $('#entryShiftRowsBody').addEventListener('input', handleShiftRowInput);
+  $('#entryShiftRowsBody').addEventListener('change', handleShiftRowInput);
+  $('#entryShiftRowsBody').addEventListener('click', handleShiftRowClick);
+  $$('[data-add-shift]').forEach((button) => button.addEventListener('click', () => addShiftPreset(button.dataset.addShift)));
   $('#deleteEntryButton').addEventListener('click', deleteCurrentEntry);
 
   $('#addDOLineButton').addEventListener('click', addDOLine);
@@ -172,7 +179,7 @@ function switchView(view) {
 
 function renderAll() {
   updateStorageUI();
-  const companyName = data.settings?.companyName || 'KG Simple Site Calendar';
+  const companyName = data.settings?.companyName || 'KG Shift Site Calendar';
   $('#brandName').textContent = companyName;
   document.title = companyName;
   renderCalendar();
@@ -232,6 +239,127 @@ function peopleLabel(value = 'worker') {
   return PEOPLE_META[value] || 'Worker';
 }
 
+const SHIFT_TYPES = {
+  worker: 'Worker',
+  foreman: 'Foreman',
+  subcon: 'Subcon',
+};
+
+function cleanShiftAssignment(row = {}) {
+  const type = SHIFT_TYPES[row.type] ? row.type : 'worker';
+  return {
+    id: row.id || uid('shift'),
+    type,
+    name: String(row.name || row.personName || '').trim(),
+    role: String(row.role || '').trim(),
+    shiftRate: Math.max(0, Number(row.shiftRate ?? row.rate ?? 0)),
+  };
+}
+
+function shiftAssignmentsForJob(job = {}) {
+  if (Array.isArray(job.shiftAssignments) && job.shiftAssignments.length) {
+    return job.shiftAssignments.map(cleanShiftAssignment);
+  }
+
+  const legacyType = job.peopleType || 'worker';
+  const legacyName = String(job.peopleNotes || '').trim();
+  if (legacyType === 'all') {
+    return ['worker', 'foreman', 'subcon'].map((type) => cleanShiftAssignment({ type, name: legacyName }));
+  }
+  if (SHIFT_TYPES[legacyType] || legacyName) {
+    return [cleanShiftAssignment({ type: SHIFT_TYPES[legacyType] ? legacyType : 'worker', name: legacyName })];
+  }
+  return [];
+}
+
+function shiftCounts(assignments = []) {
+  return assignments.reduce((counts, row) => {
+    counts[row.type] = (counts[row.type] || 0) + 1;
+    return counts;
+  }, { worker: 0, foreman: 0, subcon: 0 });
+}
+
+function shiftCountLabel(assignments = []) {
+  const counts = shiftCounts(assignments);
+  const parts = [];
+  if (counts.worker) parts.push(`${counts.worker}W`);
+  if (counts.foreman) parts.push(`${counts.foreman}F`);
+  if (counts.subcon) parts.push(`${counts.subcon}S`);
+  return parts.join(' · ') || 'No manpower';
+}
+
+function dailyShiftCost(assignments = []) {
+  return roundMoney(assignments.reduce((sum, row) => sum + Number(row.shiftRate || 0), 0));
+}
+
+function addShiftRow(type = 'worker') {
+  entryShiftRows.push(cleanShiftAssignment({ type }));
+}
+
+function addShiftPreset(type = 'worker') {
+  if (type === 'all') {
+    addShiftRow('worker');
+    addShiftRow('foreman');
+    addShiftRow('subcon');
+  } else {
+    addShiftRow(type);
+  }
+  renderEntryShiftRows();
+}
+
+function renderEntryShiftRows() {
+  const currency = data.settings?.currency || 'SGD';
+  $('#entryShiftRowsBody').innerHTML = entryShiftRows.map((row) => `<tr data-shift-id="${escapeHtml(row.id)}">
+    <td><select data-shift-field="type">${Object.entries(SHIFT_TYPES).map(([value, label]) => `<option value="${value}" ${row.type === value ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
+    <td><input data-shift-field="name" value="${escapeHtml(row.name)}" placeholder="Name or company" /></td>
+    <td><input data-shift-field="role" value="${escapeHtml(row.role)}" placeholder="e.g. Installer" /></td>
+    <td><input data-shift-field="shiftRate" type="number" min="0" step="0.01" value="${escapeHtml(Number(row.shiftRate || 0).toFixed(2))}" /></td>
+    <td><button type="button" class="icon-button" data-remove-shift="${escapeHtml(row.id)}" title="Remove">×</button></td>
+  </tr>`).join('');
+  $('#entryNoShifts').classList.toggle('hidden', entryShiftRows.length > 0);
+  $('#entryDailyManpowerTotal').textContent = money(dailyShiftCost(entryShiftRows), currency);
+}
+
+function handleShiftRowInput(event) {
+  const rowElement = event.target.closest('[data-shift-id]');
+  const field = event.target.dataset.shiftField;
+  if (!rowElement || !field) return;
+  const row = entryShiftRows.find((item) => item.id === rowElement.dataset.shiftId);
+  if (!row) return;
+  row[field] = field === 'shiftRate' ? Math.max(0, Number(event.target.value || 0)) : event.target.value;
+  $('#entryDailyManpowerTotal').textContent = money(dailyShiftCost(entryShiftRows), data.settings?.currency || 'SGD');
+}
+
+function handleShiftRowClick(event) {
+  const id = event.target.dataset.removeShift;
+  if (!id) return;
+  entryShiftRows = entryShiftRows.filter((row) => row.id !== id);
+  renderEntryShiftRows();
+}
+
+function manpowerRecordId(jobId, assignmentId, date) {
+  return `mp_${String(jobId).replaceAll('/', '_')}_${String(assignmentId).replaceAll('/', '_')}_${String(date).replaceAll('-', '')}`;
+}
+
+function calendarCostSummary() {
+  const deliveryOrders = asArray(data.deliveryOrders)
+    .filter((row) => row.status !== 'cancelled')
+    .filter((row) => calendarSiteFilter ? row.toSiteId === calendarSiteFilter : row.date === calendarSelectedDate);
+  const manpowerRows = asArray(data.manpower)
+    .filter((row) => calendarSiteFilter ? row.siteId === calendarSiteFilter : row.date === calendarSelectedDate);
+  const materialCost = roundMoney(deliveryOrders.reduce((sum, row) => sum + Number(row.materialCost || 0), 0));
+  const labourCost = roundMoney(manpowerRows.reduce((sum, row) => sum + manpowerCost(row), 0));
+  return {
+    scope: calendarSiteFilter
+      ? `All records for ${siteDisplay(data.sites?.[calendarSiteFilter])}`
+      : dateLabel(calendarSelectedDate),
+    deliveryOrderCount: deliveryOrders.length,
+    materialCost,
+    manpowerCost: labourCost,
+    totalCost: roundMoney(materialCost + labourCost),
+  };
+}
+
 function preferredSiteForDate() {
   if (calendarSiteFilter && data.sites?.[calendarSiteFilter]?.type === 'worksite') return calendarSiteFilter;
   const job = jobsForDate(calendarSelectedDate)[0];
@@ -279,12 +407,23 @@ function eventChipsForDate(date) {
   const chips = [];
   jobsForDate(date).forEach((job) => {
     const address = siteDisplay(data.sites?.[job.siteId]);
+    const assignments = shiftAssignmentsForJob(job);
     const className = job.outcome === 'cannot_work' ? 'cannot' : (job.status || 'active');
-    chips.push(`<button class="calendar-event ${className}" data-action="edit-entry" data-id="${job.id}" title="${escapeHtml(`${address} · ${peopleLabel(job.peopleType)} · ${STATUS_META[job.status]?.label || 'Active'}`)}"><strong>${escapeHtml(address)}</strong><small>${escapeHtml(peopleLabel(job.peopleType))}${job.outcome === 'cannot_work' ? ' · Cannot work' : ''}</small></button>`);
+    const detail = `${shiftCountLabel(assignments)} · ${STATUS_META[job.status]?.label || 'Active'}${job.outcome === 'cannot_work' ? ' · Cannot work' : ''}`;
+    chips.push(`<button class="calendar-event ${className}" data-action="edit-entry" data-id="${job.id}" title="${escapeHtml(`${address} · ${detail}`)}"><strong class="address-line">${escapeHtml(address)}</strong><small>${escapeHtml(detail)}</small></button>`);
   });
-  deliveriesForDate(date).forEach((row) => chips.push(`<button class="calendar-event delivery" data-action="delivery-site" data-site="${row.toSiteId}" data-date="${date}" title="${escapeHtml(row.doNumber || 'Delivery')}"><strong>Delivery</strong><small>${escapeHtml(siteDisplay(data.sites?.[row.toSiteId]))}</small></button>`));
-  stockReturnsForDate(date).forEach((row) => chips.push(`<button class="calendar-event stock-return" data-action="return-site" data-site="${row.fromSiteId}" data-date="${date}"><strong>Stock return</strong><small>${escapeHtml(siteDisplay(data.sites?.[row.fromSiteId]))}</small></button>`));
-  equipmentForDate(date).forEach((row) => chips.push(`<button class="calendar-event equipment" data-action="equipment-site" data-site="${row.siteId}" data-date="${date}"><strong>${row.action === 'return' ? 'Equipment return' : 'Equipment out'}</strong><small>${escapeHtml(siteDisplay(data.sites?.[row.siteId]))}</small></button>`));
+  deliveriesForDate(date).forEach((row) => {
+    const address = siteDisplay(data.sites?.[row.toSiteId]);
+    chips.push(`<button class="calendar-event delivery" data-action="delivery-site" data-site="${row.toSiteId}" data-date="${date}" title="${escapeHtml(`${address} · ${row.doNumber || 'Delivery'}`)}"><strong class="address-line">${escapeHtml(address)}</strong><small>Delivery · ${escapeHtml(row.doNumber || 'DO')}</small></button>`);
+  });
+  stockReturnsForDate(date).forEach((row) => {
+    const address = siteDisplay(data.sites?.[row.fromSiteId]);
+    chips.push(`<button class="calendar-event stock-return" data-action="return-site" data-site="${row.fromSiteId}" data-date="${date}"><strong class="address-line">${escapeHtml(address)}</strong><small>Stock return</small></button>`);
+  });
+  equipmentForDate(date).forEach((row) => {
+    const address = siteDisplay(data.sites?.[row.siteId]);
+    chips.push(`<button class="calendar-event equipment" data-action="equipment-site" data-site="${row.siteId}" data-date="${date}"><strong class="address-line">${escapeHtml(address)}</strong><small>${row.action === 'return' ? 'Equipment return' : 'Equipment out'}</small></button>`);
+  });
   return chips;
 }
 
@@ -296,6 +435,8 @@ function renderCalendar() {
   const selectedReturns = stockReturnsForDate(calendarSelectedDate);
   const selectedEquipment = equipmentForDate(calendarSelectedDate);
   const selectedCount = selectedJobs.length + selectedDeliveries.length + selectedReturns.length + selectedEquipment.length;
+  const costSummary = calendarCostSummary();
+  const currency = data.settings?.currency || 'SGD';
 
   $('#calendarView').innerHTML = `
     <div class="toolbar calendar-toolbar">
@@ -319,10 +460,18 @@ function renderCalendar() {
     </div>
 
     <div class="quick-strip">
-      <button class="quick-card primary-card" data-action="new-entry" data-date="${calendarSelectedDate}"><span>＋</span><strong>Site entry</strong><small>Worker, foreman, subcon or all</small></button>
+      <button class="quick-card primary-card" data-action="new-entry" data-date="${calendarSelectedDate}"><span>＋</span><strong>Site entry</strong><small>Each person counts as one shift</small></button>
       <button class="quick-card" data-action="delivery-site" data-site="${preferredSiteForDate()}" data-date="${calendarSelectedDate}"><span>🚚</span><strong>Delivery</strong><small>Material sent to site</small></button>
       <button class="quick-card" data-action="return-site" data-site="${preferredSiteForDate()}" data-date="${calendarSelectedDate}"><span>↩</span><strong>Stock return</strong><small>Material returned from site</small></button>
       <button class="quick-card" data-action="equipment-site" data-site="${preferredSiteForDate()}" data-date="${calendarSelectedDate}"><span>🪜</span><strong>Ladder / equipment</strong><small>Borrow or partly return</small></button>
+    </div>
+
+    <div class="summary-heading"><strong>${escapeHtml(costSummary.scope)}</strong><span>${calendarSiteFilter ? 'Address summary' : 'Selected-day summary'}</span></div>
+    <div class="cost-summary-strip">
+      <div class="cost-summary-card"><small>DO made</small><strong>${number(costSummary.deliveryOrderCount, 0)}</strong></div>
+      <div class="cost-summary-card"><small>Material cost</small><strong>${money(costSummary.materialCost, currency)}</strong></div>
+      <div class="cost-summary-card"><small>Manpower cost</small><strong>${money(costSummary.manpowerCost, currency)}</strong></div>
+      <div class="cost-summary-card total"><small>Total cost</small><strong>${money(costSummary.totalCost, currency)}</strong></div>
     </div>
 
     <div class="card calendar-card">
@@ -355,16 +504,21 @@ function renderSelectedDay(jobs, deliveries, returns, equipmentRows) {
 
   jobs.forEach((job) => {
     const site = data.sites?.[job.siteId];
+    const assignments = shiftAssignmentsForJob(job);
+    const dailyCost = dailyShiftCost(assignments);
     const equipmentNeeds = job.equipmentNeeds || {};
     const needParts = [];
     if (Number(equipmentNeeds.ladderQty || 0) > 0) needParts.push(`${number(equipmentNeeds.ladderQty, 0)} ladder${equipmentNeeds.ladderType ? ` (${equipmentNeeds.ladderType})` : ''}`);
     if (Number(equipmentNeeds.scaffoldQty || 0) > 0) needParts.push(`${number(equipmentNeeds.scaffoldQty, 0)} scaffold${equipmentNeeds.scaffoldType ? ` (${equipmentNeeds.scaffoldType})` : ''}`);
     if (equipmentNeeds.other) needParts.push(equipmentNeeds.other);
     const outstanding = equipmentOutstanding(data.equipmentTransactions, job.siteId).filter((row) => row.outstanding > 0);
+    const assignmentDetails = assignments.map((row) => `${SHIFT_TYPES[row.type]}: ${row.name || row.role || 'Unnamed'}${row.role && row.name ? ` (${row.role})` : ''} · ${money(row.shiftRate, currency)}`).join(' · ');
     blocks.push(`<article class="day-record site-record ${job.outcome === 'cannot_work' ? 'cannot-record' : ''}">
       <div class="record-main">
         <div class="record-title-row"><h3>${escapeHtml(siteDisplay(site))}</h3>${statusBadge(job.status)}</div>
-        <div class="record-tags"><span>${escapeHtml(peopleLabel(job.peopleType))}</span>${job.peopleNotes ? `<span>${escapeHtml(job.peopleNotes)}</span>` : ''}${job.outcome === 'cannot_work' ? '<span class="danger-tag">Work cannot be done</span>' : '<span>Work</span>'}</div>
+        <div class="record-tags"><span>${escapeHtml(shiftCountLabel(assignments))}</span><span>1 shift each</span>${job.outcome === 'cannot_work' ? '<span class="danger-tag">Work cannot be done</span>' : '<span>Work</span>'}</div>
+        ${assignmentDetails ? `<p><strong>Manpower:</strong> ${escapeHtml(assignmentDetails)}</p>` : '<p><strong>Manpower:</strong> None recorded</p>'}
+        <p><strong>Manpower cost today:</strong> ${money(dailyCost, currency)}</p>
         ${job.notes ? `<p>${escapeHtml(job.notes)}</p>` : ''}
         ${job.outcome === 'cannot_work' && job.cannotWorkReason ? `<p class="danger-text"><strong>Reason:</strong> ${escapeHtml(job.cannotWorkReason)}</p>` : ''}
         ${needParts.length ? `<p><strong>Needed:</strong> ${escapeHtml(needParts.join(' · '))}</p>` : ''}
@@ -400,16 +554,14 @@ function openEntryDialog(id = '', selectedDate = '', siteId = '') {
   const record = id ? data.jobs?.[id] : null;
   $('#entryForm').reset();
   $('#entryId').value = id;
-  $('#entryDialogTitle').textContent = record ? 'Edit Site Entry' : 'Add Site Entry';
+  $('#entryDialogTitle').textContent = record ? 'Edit Site Work' : 'Add Site Work';
   $('#entrySite').innerHTML = siteOptions(record?.siteId || siteId || '', { worksiteOnly: true });
   $('#entrySite').value = record?.siteId || siteId || worksites()[0]?.id || '';
   const date = selectedDate || calendarSelectedDate || todayISO();
   $('#entryStartDate').value = record?.startDate || date;
   $('#entryEndDate').value = record?.endDate || record?.startDate || date;
-  $('#entryPeopleType').value = record?.peopleType || 'worker';
   $('#entryStatus').value = record?.status || data.sites?.[$('#entrySite').value]?.status || 'active';
   $('#entryOutcome').value = record?.outcome || 'work';
-  $('#entryPeopleNotes').value = record?.peopleNotes || '';
   $('#entryCannotWorkReason').value = record?.cannotWorkReason || '';
   $('#entryNotes').value = record?.notes || record?.workNotes || '';
   $('#entryLadderType').value = record?.equipmentNeeds?.ladderType || '';
@@ -417,6 +569,8 @@ function openEntryDialog(id = '', selectedDate = '', siteId = '') {
   $('#entryScaffoldType').value = record?.equipmentNeeds?.scaffoldType || '';
   $('#entryScaffoldQty').value = Number(record?.equipmentNeeds?.scaffoldQty || 0);
   $('#entryOtherEquipment').value = record?.equipmentNeeds?.other || '';
+  entryShiftRows = record ? shiftAssignmentsForJob(record) : [];
+  renderEntryShiftRows();
   $('#deleteEntryButton').classList.toggle('hidden', !record);
   updateOutcomeVisibility();
   $('#entryDialog').showModal();
@@ -450,14 +604,19 @@ async function saveEntry(event) {
     const timestamp = new Date().toISOString();
     const site = data.sites?.[siteId];
     const notes = $('#entryNotes').value.trim();
+    const assignments = entryShiftRows.map(cleanShiftAssignment);
+    const categories = new Set(assignments.map((row) => row.type));
+    const peopleType = categories.size > 1 ? 'all' : (assignments[0]?.type || 'worker');
     const record = {
       ...(existing || {}),
-      name: notes || (outcome === 'cannot_work' ? 'Work cannot be done' : 'Site work'),
+      name: siteDisplay(site),
       siteId,
       address: site?.address || site?.name || '',
       status,
-      peopleType: $('#entryPeopleType').value,
-      peopleNotes: $('#entryPeopleNotes').value.trim(),
+      peopleType,
+      peopleNotes: assignments.map((row) => row.name).filter(Boolean).join(', '),
+      shiftAssignments: assignments,
+      dailyManpowerCost: dailyShiftCost(assignments),
       outcome,
       cannotWorkReason: outcome === 'cannot_work' ? reason : '',
       notes,
@@ -471,7 +630,7 @@ async function saveEntry(event) {
         scaffoldQty: Number($('#entryScaffoldQty').value || 0),
         other: $('#entryOtherEquipment').value.trim(),
       },
-      source: 'simple_internal_calendar',
+      source: 'shift_internal_calendar',
       createdAt: existing?.createdAt || timestamp,
       createdBy: existing?.createdBy || currentUserLabel(),
       updatedAt: timestamp,
@@ -487,6 +646,36 @@ async function saveEntry(event) {
         updatedBy: currentUserLabel(),
       },
     };
+
+    // Replace this work entry's manpower records so edits never double count.
+    asArray(data.manpower)
+      .filter((row) => row.jobId === id)
+      .forEach((row) => { updates[`manpower/${row.id}`] = null; });
+
+    datesInRange(startDate, endDate).forEach((date) => {
+      assignments.forEach((assignment) => {
+        const manpowerId = manpowerRecordId(id, assignment.id, date);
+        updates[`manpower/${manpowerId}`] = {
+          jobId: id,
+          siteId,
+          date,
+          personName: assignment.name,
+          workerName: assignment.name,
+          workerType: assignment.type,
+          category: assignment.type,
+          role: assignment.role,
+          payType: 'daily',
+          units: 1,
+          shifts: 1,
+          rate: Number(assignment.shiftRate || 0),
+          cost: Number(assignment.shiftRate || 0),
+          notes: `1 ${SHIFT_TYPES[assignment.type]} shift`,
+          createdAt: timestamp,
+          createdBy: currentUserLabel(),
+        };
+      });
+    });
+
     if (!existing || existing.status !== status || existing.outcome !== outcome) {
       const activityId = uid('activity');
       updates[`jobActivities/${activityId}`] = {
@@ -502,18 +691,22 @@ async function saveEntry(event) {
     calendarSelectedDate = startDate;
     calendarMonth = `${startDate.slice(0, 7)}-01`;
     closeDialog('entryDialog');
-    showToast(existing ? 'Site entry updated.' : 'Site entry saved.');
+    showToast(existing ? 'Site work updated.' : 'Site work saved.');
   } catch (error) {
-    showToast(error.message || 'Unable to save site entry.', true);
+    showToast(error.message || 'Unable to save site work.', true);
   }
 }
 
 async function deleteCurrentEntry() {
   const id = $('#entryId').value;
   if (!id || !data.jobs?.[id]) return;
-  if (!confirm('Delete this calendar entry?')) return;
+  if (!confirm('Delete this calendar entry and its manpower shifts?')) return;
   try {
-    await store.remove('jobs', id);
+    const updates = { [`jobs/${id}`]: null };
+    asArray(data.manpower)
+      .filter((row) => row.jobId === id)
+      .forEach((row) => { updates[`manpower/${row.id}`] = null; });
+    await store.updateMany(updates);
     closeDialog('entryDialog');
     showToast('Calendar entry deleted.');
   } catch (error) {
@@ -529,12 +722,10 @@ function addDOLine() {
 
 function openDODialog(siteId = '', selectedDate = '') {
   if (!requireReady(['sites', 'items'])) return;
-  if (!worksites().length || !warehouses().length) { switchView('master'); return showToast('Add at least one worksite and one store first.', true); }
+  if (!worksites().length) { switchView('master'); return showToast('Add at least one worksite address first.', true); }
   $('#doForm').reset();
   $('#doDate').value = selectedDate || calendarSelectedDate || todayISO();
-  $('#doFromSite').innerHTML = siteOptions('', { warehouseOnly: true });
   $('#doToSite').innerHTML = siteOptions(siteId, { worksiteOnly: true });
-  $('#doFromSite').value = warehouses()[0]?.id || '';
   $('#doToSite').value = siteId || worksites()[0]?.id || '';
   doDraftLines = [];
   addDOLine();
@@ -600,10 +791,9 @@ async function saveDeliveryOrder(event) {
   event.preventDefault();
   try {
     const date = $('#doDate').value;
-    const fromSiteId = $('#doFromSite').value;
+    const fromSiteId = '';
     const toSiteId = $('#doToSite').value;
-    if (!fromSiteId || !toSiteId) throw new Error('Choose the store and delivery address.');
-    if (fromSiteId === toSiteId) throw new Error('Store and delivery address must be different.');
+    if (!toSiteId) throw new Error('Choose the delivery address.');
     if (!doDraftLines.length) throw new Error('Add at least one material.');
 
     const lines = doDraftLines.map((draft) => {
@@ -644,7 +834,7 @@ async function saveDeliveryOrder(event) {
       const txId = uid('tx');
       updates[`stockTransactions/${txId}`] = {
         date,
-        type: 'transfer',
+        type: 'stock_in',
         movementKind: 'delivery_to_site',
         itemId: line.itemId,
         quantity: line.quantity,
@@ -892,7 +1082,7 @@ function renderSettings() {
       <form id="settingsForm" class="card">
         <div class="section-heading"><div><h2>Company settings</h2><p>Used for the app name and money display.</p></div></div>
         <div class="form-grid two">
-          <label>Company / app name<input name="companyName" value="${escapeHtml(data.settings?.companyName || 'KG Simple Site Calendar')}" required /></label>
+          <label>Company / app name<input name="companyName" value="${escapeHtml(data.settings?.companyName || 'KG Shift Site Calendar')}" required /></label>
           <label>Currency<select name="currency"><option value="SGD" ${(data.settings?.currency || 'SGD') === 'SGD' ? 'selected' : ''}>SGD</option><option value="MYR" ${data.settings?.currency === 'MYR' ? 'selected' : ''}>MYR</option></select></label>
           <label>DO prefix<input name="doPrefix" value="${escapeHtml(data.settings?.doPrefix || 'DO')}" /></label>
           <label>Company address<input name="companyAddress" value="${escapeHtml(data.settings?.companyAddress || '')}" /></label>

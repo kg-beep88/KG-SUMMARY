@@ -1,4 +1,4 @@
-const CACHE = 'kg-simple-site-calendar-v4-20260617';
+const CACHE = 'kg-address-shift-calendar-v5-1-20260617';
 const FILES = [
   './',
   './index.html',

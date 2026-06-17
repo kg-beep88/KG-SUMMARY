@@ -207,3 +207,28 @@ td p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
   .calendar-event strong { font-size: 9px; }
   .topbar h1 { font-size: 24px; }
 }
+
+/* Shift calendar V5 */
+.summary-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 4px 2px 8px; }
+.summary-heading span { color: var(--muted); font-size: 12px; }
+.cost-summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cost-summary-card { border: 1px solid var(--line); border-radius: 13px; background: white; padding: 14px; display: grid; gap: 5px; box-shadow: 0 3px 12px rgba(16,24,40,.05); }
+.cost-summary-card small { color: var(--muted); font-weight: 700; }
+.cost-summary-card strong { font-size: 20px; }
+.cost-summary-card.total { border-color: var(--primary); background: #eef4ff; }
+.cost-summary-card.total strong { color: var(--primary); }
+.shift-actions { justify-content: flex-end; }
+.shift-table select, .shift-table input { min-width: 115px; }
+.shift-table td:nth-child(2) input { min-width: 170px; }
+.address-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .cost-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .shift-actions { justify-content: flex-start; }
+}
+
+@media (max-width: 480px) {
+  .cost-summary-card { padding: 10px; }
+  .cost-summary-card strong { font-size: 16px; }
+}

@@ -1,25 +1,50 @@
-# KG Simple Site Calendar — Supabase V4
+# KG Address Shift Calendar — Supabase V5.1
 
-This version is intentionally simple. It uses only GitHub Pages and the existing Supabase project.
+This version keeps the calendar simple and uses the address as the first line.
+It uses GitHub Pages for the website and the existing Supabase project for live shared data.
 
-## Main calendar entry
+## Site-work form
+
+There is no Work Name, start/end time, hours, hourly rate, default stock source, or saved-material section.
 
 Choose:
 
 - Address
-- Date or date range
-- Worker, Foreman, Subcon, or All
+- Start and end date
 - Site status: Active, Pause, Claim, or Complete
-- Work planned/done or Work cannot be done
-- Reason work cannot be done
-- Ladder, scaffold, and other equipment needed
+- Work or Work cannot be done
+- Optional note and equipment needed
+- Add Worker, Foreman, Subcon, or All
 
-## Calendar actions
+Every manpower row contains:
 
-- Delivery to site: creates a Delivery Order and material movement
-- Stock return from site: returns one material now; more can be returned later
-- Ladder / equipment: borrow or partly return equipment
-- Calendar entries and all actions update live through Supabase
+- Type
+- Person or company name
+- Role
+- Pay for one shift
+
+One person counts as one shift for every calendar date covered by that entry.
+
+## Calendar display
+
+The first line of every calendar record is the site address.
+The second line shows worker, foreman and subcon shift counts plus the site status.
+
+## Delivery Order
+
+A delivery only asks for the delivery address, date, reference and materials.
+There is no “From location” field. The delivery is recorded as stock received directly at the selected site.
+
+## Cost summary
+
+The summary cards show:
+
+1. Number of Delivery Orders
+2. Material cost
+3. Manpower cost
+4. Total cost
+
+When an address is selected, the cards show all records for that address. With no address selected, they show the selected date.
 
 ## Upgrade an existing website
 
@@ -32,12 +57,4 @@ Use the SAFE-UPGRADE ZIP. It does not contain `supabase-config.js`.
 5. Commit the changes.
 6. Open the website and press Ctrl + F5.
 
-No new Supabase SQL migration is required if the previous Supabase app already works.
-
-## First-time Supabase setup
-
-Run `supabase/sql/01-database-setup.sql` once, then copy `supabase-config.example.js` to `supabase-config.js` and enter the project URL and publishable key.
-
-## Important
-
-This version does not use Google Calendar, service accounts, Edge Functions, secrets, or Cron.
+No new Supabase SQL is required if the current Supabase app already works.

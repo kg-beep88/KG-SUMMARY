@@ -1,30 +1,32 @@
-KG SIMPLE SITE CALENDAR V4
-==========================
+KG ADDRESS SHIFT CALENDAR V5.1 — VERY SIMPLE
+================================================
 
-FOR EXISTING LIVE WEBSITE
--------------------------
-1. Use the SAFE-UPGRADE ZIP.
-2. Extract it.
-3. Upload all files to the root of the GitHub repository.
-4. Replace the old files.
-5. Do not delete your current supabase-config.js.
+WHAT CHANGED
+------------
+1. The calendar entry shows the ADDRESS as the first line.
+2. No Work Name.
+3. No start/end time.
+4. No hours and no hourly rate.
+5. Worker, Foreman and Subcon each count as 1 shift per day.
+6. Delivery Order has no “From location” choice.
+7. Summary shows Material cost, Manpower cost and Total cost separately.
+
+UPLOAD
+------
+1. Extract the SAFE-UPGRADE ZIP.
+2. Open your existing GitHub repository.
+3. Add file > Upload files.
+4. Upload all extracted files and replace the old ones.
+5. Do NOT delete your existing supabase-config.js.
 6. Commit changes.
 7. Open the website and press Ctrl + F5.
 
-HOW TO USE
-----------
-Calendar > choose date > Site entry
+USE
+---
+Calendar > click a date > Site entry.
+Choose the address, dates and status.
+Add Worker, Foreman, Subcon or All.
+Type the pay for one shift.
+Save.
 
-Choose:
-- Address
-- Worker / Foreman / Subcon / All
-- Active / Pause / Claim / Complete
-- Work or Work cannot be done
-- Equipment needed
-
-Use the buttons for:
-- Delivery to site
-- Stock return from site
-- Ladder / equipment borrow and partial return
-
-No Google Calendar setup is needed.
+For a delivery, press Delivery and choose only the delivery address.
